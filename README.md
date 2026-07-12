@@ -28,6 +28,15 @@ way.
 Tapping outside the popup, or pressing the system Back button, closes it
 without doing anything.
 
+## Session persistence
+
+The app always reopens exactly where you left off: every split you've made,
+each divider's position, and whatever website is loaded in each individual
+pane are all saved automatically (on every split/close/navigate, on regular
+in-page navigation, and as a safety net whenever the app leaves the
+foreground) and restored on the next launch. `START_URL` is only used the
+very first time the app runs, before any session has been saved.
+
 ## How it works
 
 - `MainActivity.java` — creates the fullscreen `Activity`, builds the very
@@ -46,6 +55,10 @@ without doing anything.
 - `BookmarkStore.java` — persists bookmarks as a JSON array in
   `SharedPreferences`, the Android equivalent of `main.js`'s
   `bookmarks.json` file.
+- `SessionStore.java` — persists the whole pane tree (split layout, divider
+  ratios, and each pane's current URL) as a single JSON blob in
+  `SharedPreferences`, so `MainActivity` can rebuild the exact same
+  split-screen session on the next launch instead of starting over.
 - `assets/urlbar.html` — the popup itself, hosted in its own small
   transparent `WebView`. This is close to line-for-line the same file as the
   Electron version's `urlbar.html`, just calling `window.AndroidPopup.*`
@@ -85,9 +98,10 @@ without doing anything.
   floating popup.
 - `MIN_PERCENT` / `MAX_PERCENT` in `PaneManager.java` — how far a split
   divider can be dragged before it clamps.
-- Bookmark storage lives in the `crt_bookmarks` SharedPreferences file —
-  clear the app's storage (Settings → Apps → Edge Popup Browser → Storage →
-  Clear data) to reset bookmarks.
+- Bookmark storage lives in the `crt_bookmarks` SharedPreferences file, and
+  the saved split-screen session lives in `crt_session` — clear the app's
+  storage (Settings → Apps → Edge Popup Browser → Storage → Clear data) to
+  reset both back to a single pane at `START_URL`.
 
 ## Notes
 

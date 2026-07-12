@@ -5,6 +5,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -73,6 +74,7 @@ public class MainActivity extends AppCompatActivity {
 
     private PaneManager paneManager;
     private BookmarkStore bookmarkStore;
+    private SessionStore sessionStore;
 
     // trinity_sync.js loaded once at startup; injected into any pane whose
     // URL matches TRINITY_SYNC_DOMAINS once that pane finishes loading.
@@ -94,6 +96,7 @@ public class MainActivity extends AppCompatActivity {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
         bookmarkStore = new BookmarkStore(this);
+        sessionStore = new SessionStore(this);
         trinitySyncScript = loadAsset("trinity_sync.js");
 
         rootFrame = new FrameLayout(this);
@@ -142,7 +145,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(rootFrame);
 
         paneManager = new PaneManager(this, paneSlot, this::createConfiguredWebView);
-        lastTargetWebView = paneManager.init(START_URL);
+        lastTargetWebView = restoreSessionOrInit();
 
         hideSystemBars();
     }
@@ -195,13 +198,50 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Builds a fully wired-up WebView for a pane: navigation client, pinch
-     * zoom, and long-press detection that opens the popup targeted at this
-     * pane - the touch equivalent of contents.on('context-menu') in main.js.
+     * Rebuilds the pane tree from whatever was saved last time (same split
+     * layout, same URL in each pane), or falls back to a single pane at
+     * START_URL if there's no saved session yet or it fails to parse.
      */
+    private WebView restoreSessionOrInit() {
+        String savedTree = sessionStore.load();
+        if (savedTree != null) {
+            try {
+                return paneManager.restore(new JSONObject(savedTree));
+            } catch (JSONException e) {
+                Log.e("MainActivity", "Failed to restore saved session, starting fresh", e);
+            }
+        }
+        return paneManager.init(START_URL);
+    }
+
+    /** Persists the current split layout + each pane's URL so the next launch can restore it. */
+    private void saveSession() {
+        JSONObject tree = paneManager.serialize();
+        if (tree != null) sessionStore.save(tree.toString());
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // Safety net: the process can be killed any time after onStop with
+        // no further callback, so make sure the latest layout/URLs are
+        // written to disk as soon as the app leaves the foreground.
+        saveSession();
+    }
+
+
     @SuppressLint({"ClickableViewAccessibility", "SetJavaScriptEnabled"})
     private WebView createConfiguredWebView(String url) {
         WebView webView = new WebView(this);
+
+        // Tracks this pane's last-opened URL for the popup's URL bar. Set
+        // immediately (not just once WebView reports it back) so a
+        // freshly-launched or freshly-split pane already has the right
+        // value the instant it's long-pressed, rather than depending on
+        // WebView.getUrl(), which lags behind loadUrl() until navigation
+        // actually kicks off internally.
+        webView.setTag(url);
+
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -230,7 +270,14 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onPageStarted(WebView view, String startedUrl, Bitmap favicon) {
+                if (startedUrl != null) view.setTag(startedUrl);
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
+                if (url != null) view.setTag(url);
+                saveSession();
                 if (url == null || trinitySyncScript == null || trinitySyncScript.isEmpty()) return;
                 for (String domain : TRINITY_SYNC_DOMAINS) {
                     if (url.contains(domain)) {
@@ -286,7 +333,8 @@ public class MainActivity extends AppCompatActivity {
         scrimView.bringToFront();
         popupContainer.bringToFront();
 
-        String currentUrl = (lastTargetWebView != null) ? lastTargetWebView.getUrl() : null;
+        Object tag = (lastTargetWebView != null) ? lastTargetWebView.getTag() : null;
+        String currentUrl = (tag instanceof String) ? (String) tag : null;
         if (currentUrl == null || currentUrl.equals("about:blank")) currentUrl = "";
 
         popupWebView.evaluateJavascript(
@@ -375,7 +423,11 @@ public class MainActivity extends AppCompatActivity {
         public void navigate(String rawUrl) {
             String target = normalizeUrl(rawUrl);
             runOnUiThread(() -> {
-                if (target != null && lastTargetWebView != null) lastTargetWebView.loadUrl(target);
+                if (target != null && lastTargetWebView != null) {
+                    lastTargetWebView.setTag(target);
+                    lastTargetWebView.loadUrl(target);
+                    saveSession();
+                }
                 hidePopup();
             });
         }
@@ -383,7 +435,11 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public void navigateToBookmark(String url) {
             runOnUiThread(() -> {
-                if (url != null && lastTargetWebView != null) lastTargetWebView.loadUrl(url);
+                if (url != null && lastTargetWebView != null) {
+                    lastTargetWebView.setTag(url);
+                    lastTargetWebView.loadUrl(url);
+                    saveSession();
+                }
                 hidePopup();
             });
         }
@@ -397,6 +453,7 @@ public class MainActivity extends AppCompatActivity {
         public void splitPane(String direction) {
             runOnUiThread(() -> {
                 paneManager.splitPane(lastTargetWebView, direction);
+                saveSession();
                 hidePopup();
             });
         }
@@ -406,6 +463,7 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 paneManager.closePane(lastTargetWebView);
                 lastTargetWebView = null;
+                saveSession();
                 hidePopup();
             });
         }

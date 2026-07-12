@@ -8,6 +8,9 @@ import android.webkit.WebView;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 /**
  * Owns the tree of split/leaf panes and renders it with nested LinearLayouts +
  * draggable divider Views. This is a direct, native-Android port of the
@@ -66,6 +69,96 @@ public class PaneManager {
         rootSlot.removeAllViews();
         rootSlot.addView(leaf.webView, matchParent());
         return leaf.webView;
+    }
+
+    /**
+     * Rebuilds the whole split/leaf tree from a JSON blob previously produced
+     * by serialize() - this is what lets MainActivity reopen the exact same
+     * split layout, with each pane's last-opened URL restored, instead of
+     * always starting fresh from START_URL. Returns the first leaf's WebView
+     * so the caller has something valid to use as the initial target pane.
+     */
+    public WebView restore(JSONObject treeJson) throws JSONException {
+        rootNode = buildNode(treeJson, null);
+        rootSlot.removeAllViews();
+        rootSlot.addView(currentViewOf(rootNode), matchParent());
+        return firstLeafWebView(rootNode);
+    }
+
+    /** Serializes the current tree to JSON: split direction/ratio, or a leaf's URL. */
+    public JSONObject serialize() {
+        if (rootNode == null) return null;
+        try {
+            return serializeNode(rootNode);
+        } catch (JSONException e) {
+            return null;
+        }
+    }
+
+    private Node buildNode(JSONObject json, SplitNode parent) throws JSONException {
+        if ("split".equals(json.optString("type"))) {
+            SplitNode node = new SplitNode();
+            node.parent = parent;
+            node.direction = json.getString("direction");
+            node.ratio = (float) json.optDouble("ratio", 50.0);
+            boolean isRow = "row".equals(node.direction);
+
+            LinearLayout container = new LinearLayout(context);
+            container.setOrientation(isRow ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+            FrameLayout firstWrap = new FrameLayout(context);
+            FrameLayout secondWrap = new FrameLayout(context);
+
+            Node firstNode = buildNode(json.getJSONObject("first"), node);
+            Node secondNode = buildNode(json.getJSONObject("second"), node);
+            node.first = firstNode;
+            node.second = secondNode;
+
+            firstWrap.addView(currentViewOf(firstNode), matchParent());
+            secondWrap.addView(currentViewOf(secondNode), matchParent());
+
+            View divider = new View(context);
+            divider.setBackgroundColor(0xFF1A1A1A);
+
+            container.addView(firstWrap, weightedParams(isRow, node.ratio));
+            container.addView(divider, dividerParams(isRow));
+            container.addView(secondWrap, weightedParams(isRow, 100f - node.ratio));
+
+            node.container = container;
+            node.firstWrap = firstWrap;
+            node.secondWrap = secondWrap;
+            attachDividerDrag(divider, node);
+
+            return node;
+        } else {
+            LeafNode leaf = new LeafNode();
+            leaf.parent = parent;
+            String url = json.optString("url", "");
+            leaf.webView = factory.createWebView(url.isEmpty() ? "about:blank" : url);
+            return leaf;
+        }
+    }
+
+    private JSONObject serializeNode(Node node) throws JSONException {
+        JSONObject obj = new JSONObject();
+        if (node instanceof LeafNode) {
+            WebView wv = ((LeafNode) node).webView;
+            Object tag = wv.getTag();
+            String url = (tag instanceof String) ? (String) tag : wv.getUrl();
+            obj.put("type", "leaf");
+            obj.put("url", url != null ? url : "");
+        } else {
+            SplitNode s = (SplitNode) node;
+            obj.put("type", "split");
+            obj.put("direction", s.direction);
+            obj.put("ratio", s.ratio);
+            obj.put("first", serializeNode(s.first));
+            obj.put("second", serializeNode(s.second));
+        }
+        return obj;
+    }
+
+    private WebView firstLeafWebView(Node node) {
+        return (node instanceof LeafNode) ? ((LeafNode) node).webView : firstLeafWebView(((SplitNode) node).first);
     }
 
     /** Splits whichever pane hosts `target`, matching splitPane() in index.html. */
