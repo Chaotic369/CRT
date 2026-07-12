@@ -1,6 +1,9 @@
 package com.example.urlhud;
 
 import android.content.Context;
+import android.graphics.Color;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.widget.FrameLayout;
@@ -8,6 +11,9 @@ import android.widget.LinearLayout;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Owns the binary split-pane tree of WebViews and keeps the on-screen
@@ -17,11 +23,19 @@ import org.json.JSONObject;
  * a genuine top-level WebView (see MainActivity's class doc for why).
  *
  * Tree shape:
- *   Node.leaf(webView)                       -- a single pane
- *   Node.split(direction, first, second)     -- two children, 50/50 weight
+ *   Node.leaf(webView)                                  -- a single pane
+ *   Node.split(direction, first, second, ratio)          -- two children plus
+ *                                                            a draggable divider
  *
  * "row"  -> children side by side (horizontal LinearLayout)
  * "col"  -> children stacked (vertical LinearLayout)
+ *
+ * Each split node's on-screen LinearLayout has exactly three children in
+ * order: [firstView, dividerView, secondView]. The divider is a fixed-size
+ * drag handle; firstView/secondView split the remaining space using
+ * LinearLayout weights that track node.ratio (first gets `ratio`, second
+ * gets `1 - ratio`), so dragging the handle just adjusts those two weights
+ * live instead of triggering a full re-render.
  */
 public class PaneManager {
 
@@ -30,11 +44,25 @@ public class PaneManager {
     }
 
     private static final String DEFAULT_SPLIT_URL = "https://example.com";
+    private static final float DEFAULT_RATIO = 0.5f;
+    private static final float MIN_RATIO = 0.15f;
+    private static final float MAX_RATIO = 0.85f;
+    private static final int DIVIDER_THICKNESS_DP = 10;
+    private static final int DIVIDER_LINE_DP = 2;
+    private static final int DIVIDER_COLOR = 0x33FFFFFF;
+    private static final int DIVIDER_COLOR_ACTIVE = 0xFF4A90E2;
+
+    // Focus-border shown around whichever pane was last touched, only when
+    // there's more than one pane on screen (a single pane is unambiguously
+    // "focused" already, so the border would just be visual noise).
+    private static final int FOCUS_BORDER_DP = 2;
+    private static final int FOCUS_BORDER_COLOR = 0x664A90E2;
 
     private static class Node {
         boolean leaf;
         WebView webView;      // set when leaf
         String direction;     // "row" | "col", set when split
+        float ratio = DEFAULT_RATIO; // share of space given to `first`
         Node first;
         Node second;
         Node parent;
@@ -46,10 +74,11 @@ public class PaneManager {
             return n;
         }
 
-        static Node newSplit(String direction, Node first, Node second) {
+        static Node newSplit(String direction, Node first, Node second, float ratio) {
             Node n = new Node();
             n.leaf = false;
             n.direction = direction;
+            n.ratio = ratio;
             n.first = first;
             n.second = second;
             first.parent = n;
@@ -61,13 +90,20 @@ public class PaneManager {
     private final Context context;
     private final FrameLayout container;
     private final WebViewFactory factory;
+    private final float density;
     private Node root;
     private WebView activePane;
+
+    // Rebuilt every render() call: maps each leaf's WebView to the FrameLayout
+    // wrapping it, which is what actually paints the focus border (the
+    // border lives in the wrapper's padding, not on the WebView itself).
+    private final Map<WebView, FrameLayout> leafWrappers = new HashMap<>();
 
     public PaneManager(Context context, FrameLayout container, WebViewFactory factory) {
         this.context = context;
         this.container = container;
         this.factory = factory;
+        this.density = context.getResources().getDisplayMetrics().density;
     }
 
     /** Creates a fresh single-pane tree and renders it. Returns the new WebView. */
@@ -95,10 +131,11 @@ public class PaneManager {
         String type = o.optString("type", "leaf");
         if ("split".equals(type)) {
             String direction = o.optString("direction", "row");
+            float ratio = (float) o.optDouble("ratio", DEFAULT_RATIO);
             Node first = buildFromJson(o.getJSONObject("first"));
             Node second = buildFromJson(o.getJSONObject("second"));
             if (first == null || second == null) return null;
-            return Node.newSplit(direction, first, second);
+            return Node.newSplit(direction, first, second, clampRatio(ratio));
         } else {
             String url = o.optString("url", DEFAULT_SPLIT_URL);
             WebView wv = factory.create(url);
@@ -114,7 +151,7 @@ public class PaneManager {
         WebView newWebView = factory.create(DEFAULT_SPLIT_URL);
         Node newLeaf = Node.newLeaf(newWebView);
         Node originalLeaf = Node.newLeaf(pane);
-        Node split = Node.newSplit("col".equals(direction) ? "col" : "row", originalLeaf, newLeaf);
+        Node split = Node.newSplit("col".equals(direction) ? "col" : "row", originalLeaf, newLeaf, DEFAULT_RATIO);
 
         if (leaf.parent == null) {
             root = split;
@@ -151,13 +188,23 @@ public class PaneManager {
 
     public void setActivePane(WebView pane) {
         this.activePane = pane;
+        refreshFocusBorders();
+    }
+
+    /** Applies the subtle focus border to whichever leaf's wrapper matches activePane. */
+    private void refreshFocusBorders() {
+        boolean showBorders = hasSplit(); // no point bordering a single, unambiguous pane
+        for (Map.Entry<WebView, FrameLayout> entry : leafWrappers.entrySet()) {
+            boolean isActive = showBorders && entry.getKey() == activePane;
+            entry.getValue().setBackgroundColor(isActive ? FOCUS_BORDER_COLOR : Color.TRANSPARENT);
+        }
     }
 
     public boolean hasSplit() {
         return root != null && !root.leaf;
     }
 
-    /** Serializes the current tree, storing each leaf's last-known URL via its View tag. */
+    /** Serializes the current tree, storing each leaf's last-known URL via its View tag, and each split's current divider ratio. */
     public JSONObject serialize() {
         if (root == null) return null;
         try {
@@ -176,6 +223,7 @@ public class PaneManager {
         } else {
             o.put("type", "split");
             o.put("direction", node.direction);
+            o.put("ratio", node.ratio);
             o.put("first", serializeNode(node.first));
             o.put("second", serializeNode(node.second));
         }
@@ -194,44 +242,149 @@ public class PaneManager {
         return node.leaf ? node.webView : firstLeaf(node.first);
     }
 
+    private static float clampRatio(float ratio) {
+        return Math.max(MIN_RATIO, Math.min(MAX_RATIO, ratio));
+    }
+
+    // -------------------------------------------------------------------
+    // Rendering
+    // -------------------------------------------------------------------
+
     /** Rebuilds the on-screen view hierarchy under `container` to match the current tree. */
     private void render() {
         container.removeAllViews();
+        leafWrappers.clear();
         if (root == null) return;
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         container.addView(buildView(root), lp);
+        refreshFocusBorders();
     }
 
-    private android.view.View buildView(Node node) {
+    private View buildView(Node node) {
         if (node.leaf) {
             detachFromParent(node.webView);
-            return node.webView;
+            return wrapLeaf(node.webView);
         }
 
+        boolean horizontal = !"col".equals(node.direction);
+
         LinearLayout layout = new LinearLayout(context);
-        layout.setOrientation("col".equals(node.direction) ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        layout.setOrientation(horizontal ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
         layout.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        android.view.View firstView = buildView(node.first);
-        android.view.View secondView = buildView(node.second);
+        View firstView = buildView(node.first);
+        View secondView = buildView(node.second);
+        View divider = createDivider(layout, node, horizontal);
 
-        boolean horizontal = layout.getOrientation() == LinearLayout.HORIZONTAL;
         LinearLayout.LayoutParams firstLp = horizontal
-                ? new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
-                : new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+                ? new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, node.ratio)
+                : new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, node.ratio);
+        LinearLayout.LayoutParams dividerLp = horizontal
+                ? new LinearLayout.LayoutParams(dpToPx(DIVIDER_THICKNESS_DP), ViewGroup.LayoutParams.MATCH_PARENT)
+                : new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(DIVIDER_THICKNESS_DP));
         LinearLayout.LayoutParams secondLp = horizontal
-                ? new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
-                : new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+                ? new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f - node.ratio)
+                : new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f - node.ratio);
 
         layout.addView(firstView, firstLp);
+        layout.addView(divider, dividerLp);
         layout.addView(secondView, secondLp);
         return layout;
     }
 
-    private void detachFromParent(android.view.View view) {
+    /**
+     * Wraps a leaf's WebView in a FrameLayout whose padding becomes the
+     * focus-border ring: the wrapper's background only shows through that
+     * padding, so painting it FOCUS_BORDER_COLOR draws a thin ring around
+     * the WebView without touching the WebView's own layout at all.
+     */
+    private FrameLayout wrapLeaf(WebView webView) {
+        FrameLayout wrapper = new FrameLayout(context);
+        wrapper.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        int borderPx = dpToPx(FOCUS_BORDER_DP);
+        wrapper.setPadding(borderPx, borderPx, borderPx, borderPx);
+        wrapper.setBackgroundColor(Color.TRANSPARENT);
+        wrapper.addView(webView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        leafWrappers.put(webView, wrapper);
+        return wrapper;
+    }
+
+    /**
+     * Builds the drag handle sitting between a split's two children. The
+     * touch target is the full DIVIDER_THICKNESS_DP wide/tall, but only a
+     * thin centered line is actually painted so it reads as a hairline
+     * rather than a fat gray bar, matching the desktop split-line look.
+     */
+    private View createDivider(LinearLayout parent, Node node, boolean horizontal) {
+        FrameLayout handle = new FrameLayout(context);
+        handle.setBackgroundColor(Color.TRANSPARENT);
+
+        View line = new View(context);
+        line.setBackgroundColor(DIVIDER_COLOR);
+        FrameLayout.LayoutParams lineLp = horizontal
+                ? new FrameLayout.LayoutParams(dpToPx(DIVIDER_LINE_DP), ViewGroup.LayoutParams.MATCH_PARENT)
+                : new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(DIVIDER_LINE_DP));
+        lineLp.gravity = android.view.Gravity.CENTER;
+        handle.addView(line, lineLp);
+
+        handle.setOnTouchListener(new View.OnTouchListener() {
+            float startTouchPos;
+            float startRatio;
+            int containerSize;
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        startTouchPos = horizontal ? event.getRawX() : event.getRawY();
+                        startRatio = node.ratio;
+                        containerSize = horizontal ? parent.getWidth() : parent.getHeight();
+                        line.setBackgroundColor(DIVIDER_COLOR_ACTIVE);
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        if (containerSize <= 0) return true;
+                        float currentTouchPos = horizontal ? event.getRawX() : event.getRawY();
+                        float deltaRatio = (currentTouchPos - startTouchPos) / containerSize;
+                        node.ratio = clampRatio(startRatio + deltaRatio);
+                        applyRatio(parent, node);
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        line.setBackgroundColor(DIVIDER_COLOR);
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+        });
+
+        return handle;
+    }
+
+    /** Applies node.ratio to the first/second children's existing LinearLayout weights without rebuilding the tree. */
+    private void applyRatio(LinearLayout parent, Node node) {
+        View firstView = parent.getChildAt(0);
+        View secondView = parent.getChildAt(2);
+        if (firstView == null || secondView == null) return;
+
+        LinearLayout.LayoutParams firstLp = (LinearLayout.LayoutParams) firstView.getLayoutParams();
+        LinearLayout.LayoutParams secondLp = (LinearLayout.LayoutParams) secondView.getLayoutParams();
+        firstLp.weight = node.ratio;
+        secondLp.weight = 1f - node.ratio;
+        firstView.setLayoutParams(firstLp);
+        secondView.setLayoutParams(secondLp);
+    }
+
+    private void detachFromParent(View view) {
         if (view == null) return;
         ViewGroup parent = (ViewGroup) view.getParent();
         if (parent != null) parent.removeView(view);
+    }
+
+    private int dpToPx(int dp) {
+        return Math.round(dp * density);
     }
 }

@@ -75,6 +75,7 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
 
     private FrameLayout paneSlot;
     private WebView barWebView;
+    private View exitFullscreenButton;
     private PaneManager paneManager;
     private BookmarkStore bookmarkStore;
     private SessionStore sessionStore;
@@ -93,6 +94,8 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
 
         paneSlot = findViewById(R.id.pane_slot);
         barWebView = findViewById(R.id.bar_webview);
+        exitFullscreenButton = findViewById(R.id.exit_fullscreen_button);
+        exitFullscreenButton.setOnClickListener(v -> handleToggleFullscreen());
 
         bookmarkStore = new BookmarkStore(this);
         sessionStore = new SessionStore(this);
@@ -336,6 +339,10 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         fullscreenActive = !fullscreenActive;
         applySystemBars(fullscreenActive);
         barWebView.setVisibility(fullscreenActive ? View.GONE : View.VISIBLE);
+        // The bottom bar (and its own fullscreen button) is hidden in
+        // fullscreen, so this floating button is the only on-screen way
+        // out of fullscreen besides the back button.
+        exitFullscreenButton.setVisibility(fullscreenActive ? View.VISIBLE : View.GONE);
         runJs("window.onFullscreenChanged && window.onFullscreenChanged(" + fullscreenActive + ")");
     }
 
