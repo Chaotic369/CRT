@@ -10,9 +10,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main); // Ensure this matches your layout file
+        setContentView(R.layout.activity_main);
 
-        WebView webView = findViewById(R.id.your_webview_id); // Ensure this matches your WebView ID
+        WebView webView = findViewById(R.id.webview);
         
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
