@@ -3,262 +3,309 @@
 <head>
 <meta charset="UTF-8">
 <style>
+  :root {
+    --bar-bg: rgba(0, 4, 50, 0.98);
+    --bar-border: rgba(255, 255, 255, 0.10);
+    --accent: #4a90e2;
+    --text: #f2f2f2;
+    --text-dim: #9a9a9a;
+    --chip-bg: rgba(255, 255, 255, 0.06);
+    --chip-border: rgba(255, 255, 255, 0.14);
+    --danger: #e04a4a;
+  }
+
   html, body {
     margin: 0;
     padding: 0;
-    background: transparent;
+    height: 100%;
+    width: 100%;
     overflow: hidden;
+    background: #000432;
   }
 
-  #bar {
-    width: 100%;
-    height: 100%;
-    box-sizing: border-box;
+  #app {
+    height: 100vh;
+    width: 100vw;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 8px;
-    background: rgba(28, 28, 30, 0.92);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 14px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
 
-  #url-row {
-    display: flex;
-    align-items: center;
-    height: 40px;
-    flex: 0 0 auto;
-  }
-
-  input#url {
+  #split-root {
     flex: 1;
-    background: transparent;
-    border: none;
-    outline: none;
-    color: #f2f2f2;
-    font-size: 16px;
-    padding: 0 8px;
-    font-family: inherit;
-  }
-
-  input::placeholder { color: #7a7a7a; }
-
-  #tools-row {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-    flex: 0 0 auto;
-  }
-
-  #bookmark-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex: 0 0 auto;
-  }
-
-  #bookmark-label {
-    flex: 0 0 auto;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: #6b6b6b;
-  }
-
-  #bookmark-bar {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex: 1;
+    min-height: 0;
     min-width: 0;
+    display: flex;
+  }
+
+  .split-container { display: flex; flex: 1; min-width: 0; min-height: 0; width: 100%; height: 100%; }
+  .split-container.row { flex-direction: row; }
+  .split-container.column { flex-direction: column; }
+
+  .split-child { display: flex; min-width: 0; min-height: 0; position: relative; }
+
+  .split-resizer { flex: 0 0 6px; background: #1a1a1a; position: relative; z-index: 5; }
+  .split-resizer.vertical { width: 6px; cursor: col-resize; }
+  .split-resizer.horizontal { height: 6px; cursor: row-resize; }
+  .split-resizer:hover, .split-resizer.active { background: var(--accent); }
+
+  iframe { flex: 1; width: 100%; height: 100%; display: flex; outline: 2px solid transparent; outline-offset: -2px; transition: outline-color 0.12s ease; border: none; }
+  iframe.pane-active { outline-color: var(--accent); }
+
+  #bottom-bar {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--bar-bg);
+    border-top: 1px solid var(--bar-border);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    position: relative;
+    z-index: 20;
+  }
+
+  #toolbar-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    height: 30px;
+    box-sizing: content-box;
     overflow-x: auto;
     scrollbar-width: none;
   }
-  #bookmark-bar::-webkit-scrollbar { display: none; }
+  #toolbar-row::-webkit-scrollbar { display: none; }
 
-  .bm-btn, .tool-btn {
+  #bottom-bar.fullscreen-hidden { display: none; }
+
+  #bookmarks-inline {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     flex: 0 0 auto;
-    padding: 7px 11px;
+  }
+
+  .icon-btn {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 6px;
-    border: 1px solid rgba(255,255,255,0.14);
-    background: rgba(255,255,255,0.06);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 15px;
+    position: relative;
+    user-select: none;
+  }
+  .icon-btn:hover:not(:disabled) { background: var(--chip-bg); color: #fff; border-color: var(--chip-border); }
+  .icon-btn:disabled { opacity: 0.3; cursor: default; }
+  .icon-btn.danger:hover:not(:disabled) { background: rgba(224, 74, 74, 0.22); border-color: var(--danger); color: #fff; }
+
+  #address-input {
+    flex: 1 1 60px;
+    min-width: 60px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--chip-border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 13px;
+    padding: 0 10px;
+    outline: none;
+    font-family: inherit;
+    box-sizing: border-box;
+  }
+  #address-input:focus { border-color: var(--accent); background: rgba(255, 255, 255, 0.08); }
+
+  #zoom-group { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+
+  .divider { width: 1px; height: 18px; background: var(--bar-border); flex: 0 0 auto; margin: 0 2px; }
+
+  .bm-chip {
+    flex: 0 0 auto;
+    padding: 3px 9px;
+    border-radius: 6px;
+    border: 1px solid var(--chip-border);
+    background: var(--chip-bg);
     color: #d8d8d8;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
   }
-  .bm-btn:active, .tool-btn:active { background: rgba(74,144,226,0.25); color: #fff; border-color: #4a90e2; }
+  .bm-chip:hover { background: rgba(74, 144, 226, 0.25); color: #fff; border-color: var(--accent); }
+  .bm-add { color: var(--accent); }
 
-  .bm-add {
-    color: #4a90e2;
-  }
+  #downloads-wrap { position: relative; }
 
-  .tool-btn {
-    color: #9fd0ff;
-  }
-
-  .tool-btn-danger {
-    color: #ff8a8a;
-  }
-  .tool-btn-danger:active {
-    background: rgba(224,74,74,0.25);
-    border-color: #e04a4a;
+  #downloads-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    background: var(--accent);
     color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    border-radius: 8px;
+    min-width: 14px;
+    height: 14px;
+    line-height: 14px;
+    text-align: center;
+    padding: 0 3px;
+    display: none;
+    pointer-events: none;
   }
+
+  #downloads-panel {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    margin-bottom: 8px;
+    width: 340px;
+    max-height: 420px;
+    overflow-y: auto;
+    background: #1c1c1e;
+    border: 1px solid var(--chip-border);
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+    display: none;
+    flex-direction: column;
+    padding: 6px;
+  }
+  #downloads-panel.open { display: flex; }
+
+  .dl-header { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px 8px; }
+  .dl-header span { font-size: 12px; font-weight: 700; color: #eee; }
+  .dl-clear { font-size: 11px; color: var(--accent); background: none; border: none; cursor: pointer; padding: 2px; }
+  .dl-empty { padding: 20px 10px; text-align: center; color: var(--text-dim); font-size: 12px; }
+
+  .dl-item { padding: 8px; border-radius: 8px; }
+  .dl-item:hover { background: rgba(255, 255, 255, 0.04); }
+  .dl-name { font-size: 12px; color: #eee; font-weight: 600; margin-bottom: 2px; word-break: break-all; }
+  .dl-meta { font-size: 10px; color: var(--text-dim); margin-bottom: 5px; }
+  .dl-progress-track { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; margin-bottom: 6px; }
+  .dl-progress-fill { height: 100%; background: var(--accent); width: 0%; }
+  .dl-actions { display: flex; gap: 6px; }
+  .dl-actions button {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--chip-border);
+    background: var(--chip-bg);
+    color: #d8d8d8;
+    cursor: pointer;
+  }
+  .dl-actions button:hover { background: rgba(74, 144, 226, 0.25); border-color: var(--accent); color: #fff; }
+  .dl-actions button.danger:hover { background: rgba(224, 74, 74, 0.22); border-color: var(--danger); color: #fff; }
+
+  #bm-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+  }
+  #bm-modal-overlay.open { display: flex; }
+
+  #bm-modal {
+    width: 320px;
+    background: #1c1c1e;
+    border: 1px solid var(--chip-border);
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+    padding: 14px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  #bm-modal-title { font-size: 13px; font-weight: 700; color: #eee; margin-bottom: 10px; }
+  .bm-modal-label { font-size: 11px; color: var(--text-dim); margin: 8px 0 4px; }
+  .bm-modal-input {
+    width: 100%;
+    height: 30px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--chip-border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 13px;
+    padding: 0 9px;
+    outline: none;
+    font-family: inherit;
+    box-sizing: border-box;
+  }
+  .bm-modal-input:focus { border-color: var(--accent); background: rgba(255, 255, 255, 0.08); }
+  #bm-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  #bm-modal-actions button {
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--chip-border);
+    background: var(--chip-bg);
+    color: #d8d8d8;
+    cursor: pointer;
+  }
+  #bm-modal-ok { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  #bm-modal-cancel:hover { background: rgba(255, 255, 255, 0.1); }
+  #bm-modal-ok:hover { filter: brightness(1.1); }
 </style>
 </head>
 <body>
-  <div id="bar">
-    <div id="url-row">
-      <input id="url" type="text" placeholder="Enter URL and press Go…" autocomplete="off" spellcheck="false">
-    </div>
-    <div id="bookmark-row">
-      <span id="bookmark-label">Bookmarks</span>
-      <div id="bookmark-bar"></div>
-    </div>
-    <div id="tools-row">
-      <button class="tool-btn" id="split-row" title="Split this pane vertically (side by side)">Split ⇔</button>
-      <button class="tool-btn" id="split-col" title="Split this pane horizontally (top/bottom)">Split ⇕</button>
-      <button class="tool-btn tool-btn-danger" id="remove-split" title="Remove this split (closes this pane)">Remove split</button>
+  <div id="app">
+    <div id="split-root"></div>
+
+    <div id="bottom-bar">
+      <div id="toolbar-row">
+        <input id="address-input" type="text" placeholder="Enter URL and press Enter…" autocomplete="off" spellcheck="false">
+
+        <div id="bookmarks-inline"></div>
+        <div class="divider"></div>
+
+        <div id="zoom-group">
+          <button class="icon-btn" id="btn-zoom-out" title="Zoom out">&#8722;</button>
+          <button class="icon-btn" id="btn-zoom-in" title="Zoom in">&#43;</button>
+        </div>
+
+        <button class="icon-btn" id="btn-fullscreen" title="Enter fullscreen">&#9974;</button>
+
+        <div id="downloads-wrap">
+          <button class="icon-btn" id="btn-downloads" title="Downloads">
+            &#8595;
+            <span id="downloads-badge">0</span>
+          </button>
+          <div id="downloads-panel">
+            <div class="dl-header">
+              <span>Downloads</span>
+              <button class="dl-clear" id="dl-clear-btn">Clear completed</button>
+            </div>
+            <div id="dl-list"></div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <button class="icon-btn" id="btn-split-row" title="Split side by side">&#8646;</button>
+        <button class="icon-btn" id="btn-split-col" title="Split top/bottom">&#8645;</button>
+        <button class="icon-btn danger" id="btn-close-pane" title="Remove this split" disabled>&#10005;</button>
+      </div>
     </div>
   </div>
 
-<script>
-  // Talks to MainActivity.PopupBridge (see MainActivity.java), the Android
-  // equivalent of window.electronAPI from preload-urlbar.js. Every call here
-  // maps 1:1 to an ipcRenderer.send/invoke call in the Electron version.
-  const input = document.getElementById('url');
-  const bookmarkBar = document.getElementById('bookmark-bar');
-  let bookmarks = [];
+  <div id="bm-modal-overlay">
+    <div id="bm-modal">
+      <div id="bm-modal-title">Add bookmark</div>
+      <div class="bm-modal-label">URL</div>
+      <input id="bm-modal-url" class="bm-modal-input" type="text" placeholder="https://example.com" autocomplete="off" spellcheck="false">
+      <div class="bm-modal-label">Label</div>
+      <input id="bm-modal-label" class="bm-modal-input" type="text" placeholder="Label" autocomplete="off" spellcheck="false">
+      <div id="bm-modal-actions">
+        <button id="bm-modal-cancel">Cancel</button>
+        <button id="bm-modal-ok">Save</button>
+      </div>
+    </div>
+  </div>
 
-  function renderBookmarks() {
-    bookmarkBar.innerHTML = '';
-
-    bookmarks.forEach((bm, idx) => {
-      const btn = document.createElement('button');
-      btn.className = 'bm-btn';
-      btn.textContent = bm.label;
-      btn.title = bm.url;
-
-      btn.addEventListener('click', () => {
-        window.AndroidPopup.navigateToBookmark(bm.url);
-      });
-
-      // Android WebView fires the standard DOM 'contextmenu' event on
-      // long-press automatically, same as a desktop right-click - no extra
-      // native code needed for this inner (bookmark-chip) menu.
-      btn.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        showBmContextMenu(e.clientX, e.clientY, idx, bm);
-      });
-
-      bookmarkBar.appendChild(btn);
-    });
-
-    const addBtn = document.createElement('button');
-    addBtn.className = 'bm-btn bm-add';
-    addBtn.textContent = '＋';
-    addBtn.title = 'Add bookmark';
-    addBtn.addEventListener('click', addBookmarkFlow);
-    bookmarkBar.appendChild(addBtn);
-  }
-
-  function addBookmarkFlow() {
-    const defaultUrl = input.value.trim();
-    const url = window.prompt('Bookmark URL:', defaultUrl || 'https://');
-    if (!url || !url.trim()) return;
-    let label = window.prompt('Label:', (() => {
-      try { return new URL(url.trim()).hostname; } catch (e) { return url.trim(); }
-    })());
-    if (!label || !label.trim()) label = url.trim();
-    window.AndroidPopup.addBookmark(JSON.stringify({ label: label.trim(), url: url.trim() }));
-  }
-
-  function showBmContextMenu(x, y, idx, bm) {
-    document.querySelectorAll('.bm-ctx-menu').forEach(m => m.remove());
-
-    const menu = document.createElement('div');
-    menu.className = 'bm-ctx-menu';
-    menu.style.cssText = `position:fixed;left:${x}px;top:${y}px;background:#1c1c1e;
-      border:1px solid rgba(255,255,255,0.14);border-radius:8px;z-index:99999;padding:4px;
-      display:flex;flex-direction:column;gap:2px;min-width:110px;box-shadow:0 8px 24px rgba(0,0,0,0.5);`;
-
-    const editBtn = document.createElement('button');
-    editBtn.textContent = 'Edit';
-    editBtn.style.cssText = 'background:transparent;color:#eee;border:none;padding:8px 10px;border-radius:5px;cursor:pointer;text-align:left;font-size:13px;';
-    editBtn.addEventListener('click', () => {
-      menu.remove();
-      const newUrl = window.prompt('Bookmark URL:', bm.url);
-      if (newUrl === null || !newUrl.trim()) return;
-      const newLabel = window.prompt('Label:', bm.label);
-      if (newLabel === null || !newLabel.trim()) return;
-      window.AndroidPopup.editBookmark(idx, JSON.stringify({ label: newLabel.trim(), url: newUrl.trim() }));
-    });
-
-    const delBtn = document.createElement('button');
-    delBtn.textContent = 'Delete';
-    delBtn.style.cssText = 'background:transparent;color:#ff6b6b;border:none;padding:8px 10px;border-radius:5px;cursor:pointer;text-align:left;font-size:13px;';
-    delBtn.addEventListener('click', () => {
-      menu.remove();
-      window.AndroidPopup.deleteBookmark(idx);
-    });
-
-    menu.appendChild(editBtn);
-    menu.appendChild(delBtn);
-    document.body.appendChild(menu);
-
-    const dismiss = (ev) => {
-      if (!menu.contains(ev.target)) {
-        menu.remove();
-        document.removeEventListener('pointerdown', dismiss);
-      }
-    };
-    setTimeout(() => document.addEventListener('pointerdown', dismiss), 10);
-  }
-
-  // Called from MainActivity each time the popup is opened (the equivalent
-  // of onReset in preload-urlbar.js / 'reset-and-focus' in main.js).
-  // `lastUrl` is whatever the long-pressed pane currently has loaded (its
-  // last-opened website) - prefilled so the bar always shows where you are,
-  // selected so typing anything immediately replaces it.
-  window.resetAndFocus = function (bookmarksJson, lastUrl) {
-    input.value = lastUrl || '';
-    try { bookmarks = JSON.parse(bookmarksJson) || []; } catch (e) { bookmarks = []; }
-    renderBookmarks();
-    setTimeout(() => { input.focus(); input.select(); }, 50);
-  };
-
-  // Called from MainActivity after add/edit/delete (equivalent of
-  // onBookmarksUpdated / 'bookmarks-updated').
-  window.onBookmarksUpdated = function (bookmarksJson) {
-    try { bookmarks = JSON.parse(bookmarksJson) || []; } catch (e) { bookmarks = []; }
-    renderBookmarks();
-  };
-
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      if (input.value.trim()) window.AndroidPopup.navigate(input.value);
-    } else if (e.key === 'Escape') {
-      window.AndroidPopup.close();
-    }
-  });
-
-  document.getElementById('split-row').addEventListener('click', () => {
-    window.AndroidPopup.splitPane('row');
-  });
-  document.getElementById('split-col').addEventListener('click', () => {
-    window.AndroidPopup.splitPane('column');
-  });
-  document.getElementById('remove-split').addEventListener('click', () => {
-    window.AndroidPopup.closePane();
-  });
-</script>
+  <script src="hud.js"></script>
 </body>
 </html>

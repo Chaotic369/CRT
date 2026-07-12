@@ -1,227 +1,117 @@
-(function () {
-  'use strict';
+const MIN_PERCENT = 10;
+const MAX_PERCENT = 90;
+const rootEl = document.getElementById('split-root');
 
-  if (window.__fhInjected) return;
-  window.__fhInjected = true;
+let nodeIdCounter = 0;
+let rootNode = null;
+let activeLeafNode = null;
+let lastKnownUrl = '';
+let bookmarks = [];
 
-  var bridge = window.AndroidPersist;
+// API bridge to Java WebAppInterface
+const api = window.AndroidAPI || {
+    navigate: (url) => console.log('Navigate', url),
+    zoomIn: () => console.log('Zoom in'),
+    zoomOut: () => console.log('Zoom out'),
+    toggleFullscreen: () => console.log('Fullscreen'),
+    splitPane: (dir) => console.log('Split', dir),
+    closePane: () => console.log('Close pane'),
+    addBookmark: (label, url) => console.log('Add BM', label, url),
+    deleteBookmark: (idx) => console.log('Delete BM', idx),
+    getBookmarks: () => '[]',
+    getDownloads: () => '[]'
+};
 
-  function loadPos() {
-    try {
-      var raw = bridge && bridge.getItem('fh-pos');
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) {
-      return null;
-    }
+function createLeafNode(url) {
+  return { type: 'leaf', id: 'n' + (++nodeIdCounter), url, parent: null, el: null, webview: null };
+}
+
+function createSplitNode(direction, first, second) {
+  const node = { type: 'split', id: 's' + (++nodeIdCounter), direction, ratio: 50, first, second, parent: null, el: null, firstWrap: null, secondWrap: null, resizerEl: null };
+  first.parent = node; second.parent = node;
+  return node;
+}
+
+function renderNode(node) {
+  return node.type === 'leaf' ? renderLeaf(node) : renderSplit(node);
+}
+
+function renderLeaf(node) {
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('src', node.url);
+  iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups');
+  iframe.addEventListener('focus', () => setActiveLeaf(node));
+  node.el = iframe;
+  node.webview = iframe;
+  return iframe;
+}
+
+function setActiveLeaf(node) {
+  if (!node || node.type !== 'leaf' || !node.webview) return;
+  if (activeLeafNode && activeLeafNode !== node && activeLeafNode.webview) {
+    activeLeafNode.webview.classList.remove('pane-active');
   }
+  activeLeafNode = node;
+  node.webview.classList.add('pane-active');
+}
 
-  function savePos(pos) {
-    try {
-      if (bridge) bridge.setItem('fh-pos', JSON.stringify(pos));
-    } catch (e) {}
-  }
+function renderSplit(node) {
+  const container = document.createElement('div');
+  container.className = 'split-container ' + node.direction;
 
-  // ---------- host element, locked against page CSS ----------
-  var host = document.createElement('div');
-  host.id = 'fh-host';
-  host.style.cssText =
-    'all: initial !important;' +
-    'position: fixed !important;' +
-    'z-index: 2147483647 !important;' +
-    'bottom: 24px !important;' +
-    'right: 24px !important;' +
-    'display: block !important;' +
-    'touch-action: none !important;';
+  const firstWrap = document.createElement('div');
+  firstWrap.className = 'split-child';
+  firstWrap.style.flex = node.ratio + ' 1 0';
+  firstWrap.appendChild(renderNode(node.first));
 
-  var saved = loadPos();
-  if (saved && saved.top && saved.left) {
-    host.style.setProperty('bottom', 'auto', 'important');
-    host.style.setProperty('right', 'auto', 'important');
-    host.style.setProperty('top', saved.top, 'important');
-    host.style.setProperty('left', saved.left, 'important');
-  }
-
-  document.documentElement.appendChild(host);
-
-  var shadow = host.attachShadow({ mode: 'open' });
-
-  var style = document.createElement('style');
-  style.textContent = `
-    * { box-sizing: border-box; }
-    #fh-root {
-      position: relative;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      user-select: none;
-    }
-    #fh-toggle {
-      width: 46px;
-      height: 46px;
-      border-radius: 50%;
-      background: #1f6feb;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.35);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: grab;
-      border: none;
-      touch-action: none;
-      transition: background 0.15s ease;
-    }
-    #fh-toggle:active { cursor: grabbing; }
-    #fh-toggle svg {
-      width: 20px;
-      height: 20px;
-      fill: none;
-      stroke: #fff;
-      stroke-width: 2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      pointer-events: none;
-    }
-    #fh-panel {
-      position: absolute;
-      bottom: 56px;
-      right: 0;
-      display: none;
-      align-items: center;
-      gap: 6px;
-      background: #1c1f26;
-      padding: 8px;
-      border-radius: 10px;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-      border: 1px solid rgba(255,255,255,0.08);
-    }
-    #fh-panel.fh-open { display: flex; }
-    #fh-input {
-      width: 200px;
-      padding: 9px 10px;
-      border-radius: 6px;
-      border: 1px solid rgba(255,255,255,0.15);
-      background: #12141a;
-      color: #f2f2f2;
-      font-size: 13px;
-      outline: none;
-    }
-    #fh-input:focus { border-color: #1f6feb; }
-    #fh-go {
-      padding: 9px 14px;
-      border-radius: 6px;
-      border: none;
-      background: #1f6feb;
-      color: #fff;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-  `;
-  shadow.appendChild(style);
-
-  var wrapper = document.createElement('div');
-  wrapper.id = 'fh-root';
-  wrapper.innerHTML = `
-    <div id="fh-panel">
-      <input id="fh-input" type="text" placeholder="Enter a URL or search…" autocomplete="off" spellcheck="false" />
-      <button id="fh-go">Go</button>
-    </div>
-    <button id="fh-toggle" title="Drag to move · tap to open">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 3 2.5 15 0 18M12 3c-2.5 3-2.5 15 0 18"/></svg>
-    </button>
-  `;
-  shadow.appendChild(wrapper);
-
-  var toggleBtn = shadow.querySelector('#fh-toggle');
-  var panel = shadow.querySelector('#fh-panel');
-  var input = shadow.querySelector('#fh-input');
-  var goBtn = shadow.querySelector('#fh-go');
-
-  function openPanel() {
-    panel.classList.add('fh-open');
-    input.value = '';
-    setTimeout(function () { input.focus(); }, 20);
-  }
-  function closePanel() {
-    panel.classList.remove('fh-open');
-  }
-  function togglePanel() {
-    panel.classList.contains('fh-open') ? closePanel() : openPanel();
-  }
-
-  function go() {
-    var val = input.value.trim();
-    if (!val) return;
-
-    var looksLikeUrl = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(val) ||
-                        /^[\w-]+(\.[\w-]+)+(:\d+)?(\/.*)?$/.test(val);
-
-    if (looksLikeUrl) {
-      if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(val)) {
-        val = 'https://' + val;
-      }
-      window.location.href = val;
-    } else {
-      window.location.href = 'https://www.google.com/search?q=' + encodeURIComponent(val);
-    }
-  }
-
-  goBtn.addEventListener('click', go);
-  input.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') go();
-    if (e.key === 'Escape') closePanel();
-  });
-
-  document.addEventListener('pointerdown', function (e) {
-    var path = e.composedPath();
-    if (!path.includes(host)) closePanel();
-  });
-
-  var dragging = false;
-  var dragged = false;
-  var startX, startY, startTop, startLeft;
-
-  function clamp(v, min, max) {
-    return Math.min(Math.max(v, min), max);
-  }
-
-  toggleBtn.addEventListener('pointerdown', function (e) {
-    dragging = true;
-    dragged = false;
-    toggleBtn.setPointerCapture(e.pointerId);
-    var rect = host.getBoundingClientRect();
-    startX = e.clientX;
-    startY = e.clientY;
-    startTop = rect.top;
-    startLeft = rect.left;
-    e.preventDefault();
-  });
-
-  toggleBtn.addEventListener('pointermove', function (e) {
+  const resizer = document.createElement('div');
+  resizer.className = 'split-resizer ' + (node.direction === 'row' ? 'vertical' : 'horizontal');
+  
+  let dragging = false;
+  resizer.addEventListener('mousedown', (e) => { dragging = true; resizer.classList.add('active'); e.preventDefault(); });
+  window.addEventListener('mousemove', (e) => {
     if (!dragging) return;
-    var dx = e.clientX - startX;
-    var dy = e.clientY - startY;
-    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) dragged = true;
-
-    var w = host.offsetWidth || 46;
-    var h = host.offsetHeight || 46;
-    var newTop = clamp(startTop + dy, 0, window.innerHeight - h);
-    var newLeft = clamp(startLeft + dx, 0, window.innerWidth - w);
-
-    host.style.setProperty('bottom', 'auto', 'important');
-    host.style.setProperty('right', 'auto', 'important');
-    host.style.setProperty('top', newTop + 'px', 'important');
-    host.style.setProperty('left', newLeft + 'px', 'important');
+    const rect = node.el.getBoundingClientRect();
+    let percent = node.direction === 'row' ? ((e.clientX - rect.left) / rect.width) * 100 : ((e.clientY - rect.top) / rect.height) * 100;
+    percent = Math.max(MIN_PERCENT, Math.min(MAX_PERCENT, percent));
+    node.ratio = percent;
+    node.firstWrap.style.flex = percent + ' 1 0';
+    node.secondWrap.style.flex = (100 - percent) + ' 1 0';
   });
+  window.addEventListener('mouseup', () => { dragging = false; resizer.classList.remove('active'); });
 
-  toggleBtn.addEventListener('pointerup', function (e) {
-    if (dragging) {
-      dragging = false;
-      toggleBtn.releasePointerCapture(e.pointerId);
-      savePos({ top: host.style.top, left: host.style.left });
-    }
-  });
+  const secondWrap = document.createElement('div');
+  secondWrap.className = 'split-child';
+  secondWrap.style.flex = (100 - node.ratio) + ' 1 0';
+  secondWrap.appendChild(renderNode(node.second));
 
-  toggleBtn.addEventListener('click', function () {
-    if (dragged) { dragged = false; return; }
-    togglePanel();
-  });
-})();
+  container.appendChild(firstWrap);
+  container.appendChild(resizer);
+  container.appendChild(secondWrap);
+  node.el = container; node.firstWrap = firstWrap; node.secondWrap = secondWrap; node.resizerEl = resizer;
+  return container;
+}
+
+// Event Listeners for Bottom Bar Controls
+document.getElementById('btn-zoom-in').addEventListener('click', () => api.zoomIn());
+document.getElementById('btn-zoom-out').addEventListener('click', () => api.zoomOut());
+document.getElementById('btn-fullscreen').addEventListener('click', () => api.toggleFullscreen());
+document.getElementById('btn-split-row').addEventListener('click', () => api.splitPane('row'));
+document.getElementById('btn-split-col').addEventListener('click', () => api.splitPane('column'));
+document.getElementById('btn-close-pane').addEventListener('click', () => api.closePane());
+
+const addressInput = document.getElementById('address-input');
+addressInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    if (addressInput.value.trim()) api.navigate(addressInput.value);
+    addressInput.blur();
+  }
+});
+
+// Initialization 
+function initRoot(url) {
+  rootNode = createLeafNode(url);
+  rootEl.appendChild(renderNode(rootNode));
+  setActiveLeaf(rootNode);
+}
+initRoot("https://google.com");
