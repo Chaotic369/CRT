@@ -50,8 +50,25 @@
   #tools-row {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 6px;
     flex: 0 0 auto;
+  }
+
+  #bookmark-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+  }
+
+  #bookmark-label {
+    flex: 0 0 auto;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6b6b6b;
   }
 
   #bookmark-bar {
@@ -102,8 +119,11 @@
     <div id="url-row">
       <input id="url" type="text" placeholder="Enter URL and press Go…" autocomplete="off" spellcheck="false">
     </div>
-    <div id="tools-row">
+    <div id="bookmark-row">
+      <span id="bookmark-label">Bookmarks</span>
       <div id="bookmark-bar"></div>
+    </div>
+    <div id="tools-row">
       <button class="tool-btn" id="split-row" title="Split this pane vertically (side by side)">Split ⇔</button>
       <button class="tool-btn" id="split-col" title="Split this pane horizontally (top/bottom)">Split ⇕</button>
       <button class="tool-btn tool-btn-danger" id="remove-split" title="Remove this split (closes this pane)">Remove split</button>
@@ -205,11 +225,14 @@
 
   // Called from MainActivity each time the popup is opened (the equivalent
   // of onReset in preload-urlbar.js / 'reset-and-focus' in main.js).
-  window.resetAndFocus = function (bookmarksJson) {
-    input.value = '';
+  // `lastUrl` is whatever the long-pressed pane currently has loaded (its
+  // last-opened website) - prefilled so the bar always shows where you are,
+  // selected so typing anything immediately replaces it.
+  window.resetAndFocus = function (bookmarksJson, lastUrl) {
+    input.value = lastUrl || '';
     try { bookmarks = JSON.parse(bookmarksJson) || []; } catch (e) { bookmarks = []; }
     renderBookmarks();
-    setTimeout(() => input.focus(), 50);
+    setTimeout(() => { input.focus(); input.select(); }, 50);
   };
 
   // Called from MainActivity after add/edit/delete (equivalent of

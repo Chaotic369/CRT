@@ -54,7 +54,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String START_URL = "https://example.com";
 
     private static final int POPUP_WIDTH_DP = 320;
-    private static final int POPUP_HEIGHT_DP = 196;
+    private static final int POPUP_HEIGHT_DP = 240;
     private static final int POPUP_MARGIN_DP = 10;
 
     // Any pane whose URL contains one of these gets trinity_sync.js injected
@@ -286,8 +286,13 @@ public class MainActivity extends AppCompatActivity {
         scrimView.bringToFront();
         popupContainer.bringToFront();
 
+        String currentUrl = (lastTargetWebView != null) ? lastTargetWebView.getUrl() : null;
+        if (currentUrl == null || currentUrl.equals("about:blank")) currentUrl = "";
+
         popupWebView.evaluateJavascript(
-                "window.resetAndFocus && window.resetAndFocus(" + jsStringLiteral(bookmarkStore.toJson()) + ")",
+                "window.resetAndFocus && window.resetAndFocus("
+                        + jsStringLiteral(bookmarkStore.toJson()) + ", "
+                        + jsStringLiteral(currentUrl) + ")",
                 null);
 
         popupWebView.requestFocus();

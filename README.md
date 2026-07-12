@@ -11,11 +11,14 @@ way.
 
 ## What's in the popup
 
-- **URL bar** — type, hit Go, navigates the pane you long-pressed in.
-- **Bookmark bar** (row below the URL input) — tap a bookmark to jump to it,
-  `＋` to add the current/typed URL as a bookmark, long-press a bookmark to
-  edit or delete it. Bookmarks persist to Android `SharedPreferences`, so
-  they survive restarts.
+- **URL bar** — pre-filled with whatever the pane you long-pressed in is
+  currently showing (its last-opened website), selected so you can either
+  hit Go to reload it or just start typing to replace it. Hit Go to
+  navigate the pane you long-pressed in.
+- **Bookmark bar** (its own labeled row, below the URL input) — tap a
+  bookmark to jump to it, `＋` to add the current/typed URL as a bookmark,
+  long-press a bookmark to edit or delete it. Bookmarks persist to Android
+  `SharedPreferences`, so they survive restarts.
 - **Split ⇔ / Split ⇕** — splits *whichever pane you long-pressed in* into
   two resizable panes (side-by-side or stacked). Drag the thin divider
   between panes to resize. You can split a pane again to keep nesting.
