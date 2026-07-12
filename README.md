@@ -1,25 +1,52 @@
-# URL HUD (Android)
+# Edge Popup Browser (Android)
 
-A tiny native Android app: a fullscreen, blank WebView with nothing on it
-except the floating draggable button from your userscript. Tap it to open
-a URL bar, type a URL or search term, hit Go.
+Fullscreen, edge-to-edge native browser. No titlebar, no toolbar, no visible
+controls anywhere on screen — the *only* UI is a floating popup that appears
+wherever you **long-press**.
 
-## Why not just "convert" the userscript directly?
+This is a straight port of the desktop Electron version of this app, with
+long-press standing in for right-click (touchscreens have no right-click).
+Everything else — split panes, bookmarks, the popup itself — works the same
+way.
 
-A Tampermonkey userscript only runs inside Tampermonkey inside a real
-browser — it can't be packaged into an APK as-is. This project instead:
+## What's in the popup
 
-- Wraps a plain Android `WebView` in a single fullscreen Activity (no
-  address bar, no tabs, no browser UI at all — just your HUD).
-- Loads `about:blank` on start, so the screen is empty except the button.
-- Injects `app/src/main/assets/hud.js` (your script, lightly adapted)
-  into the page every time it finishes loading.
-- Replaces `GM_setValue`/`GM_getValue` (Tampermonkey-only APIs) with a
-  small `AndroidPersist` JS bridge backed by `SharedPreferences`, so the
-  button's position is still remembered between launches.
+- **URL bar** — type, hit Go, navigates the pane you long-pressed in.
+- **Bookmark bar** (row below the URL input) — tap a bookmark to jump to it,
+  `＋` to add the current/typed URL as a bookmark, long-press a bookmark to
+  edit or delete it. Bookmarks persist to Android `SharedPreferences`, so
+  they survive restarts.
+- **Split ⇔ / Split ⇕** — splits *whichever pane you long-pressed in* into
+  two resizable panes (side-by-side or stacked). Drag the thin divider
+  between panes to resize. You can split a pane again to keep nesting.
+- **Remove split** — closes whichever pane you long-pressed in and gives its
+  space back to its sibling pane.
 
-Everything else — the shadow-DOM isolation, dragging, the Go button,
-search fallback — is unchanged from your script.
+Tapping outside the popup, or pressing the system Back button, closes it
+without doing anything.
+
+## How it works
+
+- `MainActivity.java` — creates the fullscreen `Activity`, builds the very
+  first pane, and owns the popup: it listens for a long-press on *every*
+  pane's `WebView` (each split pane is its own real `WebView`), remembers
+  which one was pressed, and positions the popup at the touch point. It also
+  hosts the `AndroidPopup` JavaScript-interface bridge the popup talks to,
+  and applies navigate/split/close actions to whichever pane was targeted.
+- `PaneManager.java` — owns the tree of split/leaf panes and renders it as
+  nested `LinearLayout`s with `WebView` leaves and draggable divider `View`s.
+  This is a native-Android port of the split/leaf tree that Electron's
+  `index.html` builds out of flexbox `<div>`s — same tree, same operations
+  (`init` / `splitPane` / `closePane`), just real Views instead of DOM nodes,
+  since Android's `WebView` has no equivalent of Electron's `<webview>` tag
+  to nest inside HTML.
+- `BookmarkStore.java` — persists bookmarks as a JSON array in
+  `SharedPreferences`, the Android equivalent of `main.js`'s
+  `bookmarks.json` file.
+- `assets/urlbar.html` — the popup itself, hosted in its own small
+  transparent `WebView`. This is close to line-for-line the same file as the
+  Electron version's `urlbar.html`, just calling `window.AndroidPopup.*`
+  instead of `window.electronAPI.*`.
 
 ## Build it (no Android Studio needed)
 
@@ -44,8 +71,20 @@ search fallback — is unchanged from your script.
 2. Tap it. Android will ask you to allow installs from that source
    (Settings → Apps → *the app you opened it with* → Install unknown apps)
    — this is normal for any APK not from the Play Store.
-3. Open "URL HUD". You'll see a blank screen with a blue circular button
-   bottom-right. Drag it anywhere; tap it for the URL bar.
+3. Open "Edge Popup Browser". You'll see the start page fill the whole
+   screen with nothing on it. Long-press anywhere for the popup.
+
+## Things to tweak
+
+- `START_URL` in `MainActivity.java` — what loads in the first pane on
+  launch.
+- `POPUP_WIDTH_DP` / `POPUP_HEIGHT_DP` in `MainActivity.java` — size of the
+  floating popup.
+- `MIN_PERCENT` / `MAX_PERCENT` in `PaneManager.java` — how far a split
+  divider can be dragged before it clamps.
+- Bookmark storage lives in the `crt_bookmarks` SharedPreferences file —
+  clear the app's storage (Settings → Apps → Edge Popup Browser → Storage →
+  Clear data) to reset bookmarks.
 
 ## Notes
 
@@ -56,7 +95,14 @@ search fallback — is unchanged from your script.
 - If you want to change the app name or package id, edit
   `AndroidManifest.xml` (`android:label`) and `app/build.gradle`
   (`namespace` / `applicationId`).
-- This hasn't been run through an actual Android build locally (no
-  Android SDK available in the environment that generated it) — the
-  GitHub Actions run is the real first build/compile check. If it fails,
-  paste the Actions log back and I'll fix it.
+- Navigation currently isn't restricted to any domain list, same as the
+  desktop version — add a `shouldOverrideUrlLoading` allowlist in
+  `MainActivity.java` if you want to lock panes to specific sites.
+- One known rough edge: on some pages, a long-press can momentarily trigger
+  the WebView's own text-selection handles at the same time the popup opens,
+  since Chromium detects long-press for text selection independently of the
+  `View.OnLongClickListener` callback this app hooks into. It doesn't break
+  anything — the popup still opens correctly — but you may see a brief
+  selection highlight underneath it. Haven't found a clean way to fully
+  suppress that at the WebView layer without disabling text selection
+  everywhere, so it's left as-is.

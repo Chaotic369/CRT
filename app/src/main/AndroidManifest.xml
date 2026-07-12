@@ -6,7 +6,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="URL HUD"
+        android:label="Edge Popup Browser"
         android:theme="@style/Theme.NoActionBar">
 
         <activity
