@@ -6,8 +6,6 @@
 
   var addressInput = document.getElementById('address-input');
   var bookmarksInline = document.getElementById('bookmarks-inline');
-  var btnZoomOut = document.getElementById('btn-zoom-out');
-  var btnZoomIn = document.getElementById('btn-zoom-in');
   var btnFullscreen = document.getElementById('btn-fullscreen');
   var btnDownloads = document.getElementById('btn-downloads');
   var downloadsBadge = document.getElementById('downloads-badge');
@@ -44,12 +42,6 @@
   addressInput.addEventListener('focus', function () {
     addressInput.select();
   });
-
-  // -----------------------------------------------------------------
-  // Zoom
-  // -----------------------------------------------------------------
-  btnZoomOut.addEventListener('click', function () { window.AndroidAPI.zoomOut(); });
-  btnZoomIn.addEventListener('click', function () { window.AndroidAPI.zoomIn(); });
 
   // -----------------------------------------------------------------
   // Fullscreen

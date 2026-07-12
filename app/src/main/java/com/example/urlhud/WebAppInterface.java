@@ -45,19 +45,6 @@ public class WebAppInterface {
     }
 
     // ---------------------------------------------------------------
-    // Zoom - scoped to the active pane, same as ipcMain.on('zoom-in'/'zoom-out').
-    // ---------------------------------------------------------------
-    @JavascriptInterface
-    public void zoomIn() {
-        activity.runOnUiThread(activity::handleZoomIn);
-    }
-
-    @JavascriptInterface
-    public void zoomOut() {
-        activity.runOnUiThread(activity::handleZoomOut);
-    }
-
-    // ---------------------------------------------------------------
     // Fullscreen - hides the bottom bar and the Android system bars,
     // same as ipcMain.on('toggle-fullscreen').
     // ---------------------------------------------------------------

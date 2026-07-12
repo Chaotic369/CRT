@@ -102,7 +102,19 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         downloadsController = new DownloadsController(this, this);
 
         setupBarWebView();
-        paneManager = new PaneManager(this, paneSlot, this::createPaneWebView);
+        paneManager = new PaneManager(this, paneSlot, this::createPaneWebView, new PaneManager.ZoomListener() {
+            @Override
+            public void onZoomIn(WebView pane) {
+                setActivePane(pane);
+                applyZoomStep(pane, ZOOM_STEP);
+            }
+
+            @Override
+            public void onZoomOut(WebView pane) {
+                setActivePane(pane);
+                applyZoomStep(pane, -ZOOM_STEP);
+            }
+        });
 
         WebView firstPane = null;
         String savedTree = sessionStore.load();
@@ -317,22 +329,14 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         saveSession();
     }
 
-    public void handleZoomIn() {
-        applyZoomStep(ZOOM_STEP);
-    }
-
-    public void handleZoomOut() {
-        applyZoomStep(-ZOOM_STEP);
-    }
-
-    private void applyZoomStep(float step) {
-        if (activePane == null) return;
-        float current = zoomLevels.containsKey(activePane) ? zoomLevels.get(activePane) : 0f;
+    private void applyZoomStep(WebView pane, float step) {
+        if (pane == null) return;
+        float current = zoomLevels.containsKey(pane) ? zoomLevels.get(pane) : 0f;
         float next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, current + step));
         if (next == current) return;
-        zoomLevels.put(activePane, next);
+        zoomLevels.put(pane, next);
         float factor = (float) Math.pow(1.2, next - current);
-        activePane.zoomBy(factor);
+        pane.zoomBy(factor);
     }
 
     public void handleToggleFullscreen() {
