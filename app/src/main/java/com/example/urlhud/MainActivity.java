@@ -1,43 +1,27 @@
-import android.webkit.JavascriptInterface;
-import android.content.Context;
+package com.example.urlhud;
 
-// Add this interface binding in your MainActivity onCreate:
-// webView.addJavascriptInterface(new WebAppInterface(this), "AndroidAPI");
+import android.os.Bundle;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import androidx.appcompat.app.AppCompatActivity;
 
-public class WebAppInterface {
-    Context mContext;
+public class MainActivity extends AppCompatActivity {
 
-    WebAppInterface(Context c) {
-        mContext = c;
-    }
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main); // Ensure this matches your layout file
 
-    @JavascriptInterface
-    public void navigate(String url) {
-        // Implement navigation logic for the active pane
-    }
+        WebView webView = findViewById(R.id.your_webview_id); // Ensure this matches your WebView ID
+        
+        WebSettings webSettings = webView.getSettings();
+        webSettings.setJavaScriptEnabled(true);
+        webSettings.setDomStorageEnabled(true);
 
-    @JavascriptInterface
-    public void zoomIn() {
-        // Implement zoom in logic
-    }
+        // Bind the Javascript interface to the webview
+        webView.addJavascriptInterface(new WebAppInterface(this), "AndroidAPI");
 
-    @JavascriptInterface
-    public void zoomOut() {
-        // Implement zoom out logic
-    }
-
-    @JavascriptInterface
-    public void toggleFullscreen() {
-        // Implement fullscreen toggle for Android view
-    }
-
-    @JavascriptInterface
-    public void splitPane(String direction) {
-        // Implement native PaneManager splitting
-    }
-
-    @JavascriptInterface
-    public void closePane() {
-        // Implement native PaneManager closing
+        // Load the local HTML file
+        webView.loadUrl("file:///android_asset/urlbar.html");
     }
 }
