@@ -1,11 +1,14 @@
 package com.example.urlhud;
 
 import android.annotation.SuppressLint;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -24,8 +27,13 @@ import androidx.appcompat.app.AppCompatActivity;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Edge-to-edge, chrome-free browser: a tree of resizable split WebView panes
@@ -49,6 +57,12 @@ public class MainActivity extends AppCompatActivity {
     private static final int POPUP_HEIGHT_DP = 196;
     private static final int POPUP_MARGIN_DP = 10;
 
+    // Any pane whose URL contains one of these gets trinity_sync.js injected
+    // once the page finishes loading — this is the userscript @match list,
+    // reimplemented by hand since WebView has no extension/userscript host
+    // to read @match off the file itself.
+    private static final String[] TRINITY_SYNC_DOMAINS = { "olymptrade.com", "pocketoption.com" };
+
     private FrameLayout rootFrame;
     private FrameLayout paneSlot;
     private FrameLayout popupContainer;
@@ -59,6 +73,10 @@ public class MainActivity extends AppCompatActivity {
 
     private PaneManager paneManager;
     private BookmarkStore bookmarkStore;
+
+    // trinity_sync.js loaded once at startup; injected into any pane whose
+    // URL matches TRINITY_SYNC_DOMAINS once that pane finishes loading.
+    private String trinitySyncScript;
 
     // Whichever pane was long-pressed last - every popup action targets this,
     // mirroring lastTargetWcId in main.js.
@@ -76,6 +94,7 @@ public class MainActivity extends AppCompatActivity {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
         bookmarkStore = new BookmarkStore(this);
+        trinitySyncScript = loadAsset("trinity_sync.js");
 
         rootFrame = new FrameLayout(this);
         rootFrame.setBackgroundColor(0xFF0A0A0A);
@@ -162,6 +181,19 @@ public class MainActivity extends AppCompatActivity {
         return dp * getResources().getDisplayMetrics().density;
     }
 
+    /** Reads a file from assets/ into a String. Used to load trinity_sync.js once at startup. */
+    private String loadAsset(String filename) {
+        StringBuilder sb = new StringBuilder();
+        try (InputStream is = getAssets().open(filename);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) sb.append(line).append('\n');
+        } catch (IOException e) {
+            Log.e("MainActivity", "Failed to load asset " + filename, e);
+        }
+        return sb.toString();
+    }
+
     /**
      * Builds a fully wired-up WebView for a pane: navigation client, pinch
      * zoom, and long-press detection that opens the popup targeted at this
@@ -181,6 +213,7 @@ public class MainActivity extends AppCompatActivity {
         settings.setDisplayZoomControls(false);
 
         webView.setWebChromeClient(new WebChromeClient());
+        webView.addJavascriptInterface(new ClipboardBridge(), "AndroidClipboard");
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String requestUrl) {
@@ -194,6 +227,17 @@ public class MainActivity extends AppCompatActivity {
                     // no app can handle it - just ignore
                 }
                 return true;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if (url == null || trinitySyncScript == null || trinitySyncScript.isEmpty()) return;
+                for (String domain : TRINITY_SYNC_DOMAINS) {
+                    if (url.contains(domain)) {
+                        view.evaluateJavascript(trinitySyncScript, null);
+                        break;
+                    }
+                }
             }
         });
 
@@ -281,6 +325,36 @@ public class MainActivity extends AppCompatActivity {
             return "https://www.google.com/search?q=" + URLEncoder.encode(value, "UTF-8");
         } catch (UnsupportedEncodingException e) {
             return "https://www.google.com/search?q=" + value;
+        }
+    }
+
+    /**
+     * Native ClipboardManager bridge for trinity_sync.js and the pane hosting
+     * the signal source. Exists because Android WebView's Web Clipboard API
+     * (navigator.clipboard.readText/writeText) throws NotAllowedError with no
+     * way to grant it — WebView has no permission-prompt surface for it and
+     * navigator.permissions is undefined there. This bridge talks to
+     * Android's OS-level clipboard directly instead, which any pane in a
+     * focused, foregrounded app (this one) can always read and write.
+     */
+    private class ClipboardBridge {
+
+        @JavascriptInterface
+        public void write(String text) {
+            runOnUiThread(() -> {
+                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("trinity", text));
+            });
+        }
+
+        @JavascriptInterface
+        public String read() {
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm == null) return "";
+            ClipData clip = cm.getPrimaryClip();
+            if (clip == null || clip.getItemCount() == 0) return "";
+            CharSequence text = clip.getItemAt(0).coerceToText(MainActivity.this);
+            return text != null ? text.toString() : "";
         }
     }
 

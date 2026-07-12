@@ -106,3 +106,33 @@ without doing anything.
   selection highlight underneath it. Haven't found a clean way to fully
   suppress that at the WebView layer without disabling text selection
   everywhere, so it's left as-is.
+
+## TRINITY_SYNC pair-sync bridge
+
+Android WebView has no extension host, so a Tampermonkey userscript can't be
+installed here the way it can on desktop. Two things were added to work
+around that:
+
+- **`assets/trinity_sync.js`** — an Android build of the `TRINITY_PAIR_SYNC`
+  userscript. `MainActivity.java`'s `onPageFinished` hook injects it via
+  `WebView.evaluateJavascript()` into any pane whose URL matches
+  `TRINITY_SYNC_DOMAINS` (currently `olymptrade.com` / `pocketoption.com`) —
+  this replaces the userscript's `@match` list, which nothing on Android
+  reads automatically.
+- **`ClipboardBridge`** (in `MainActivity.java`, exposed to JS as
+  `window.AndroidClipboard`) — Android WebView's Web Clipboard API
+  (`navigator.clipboard.readText`/`writeText`) throws `NotAllowedError` with
+  no way to grant it; `navigator.permissions` doesn't even exist in WebView.
+  This bridge reads/writes Android's native clipboard directly instead, and
+  is registered on every pane, so the signal-source pane and the OT/PO pane
+  can pass a pair name through it.
+
+If your signal source is a page you also control (e.g. a page like
+`888znq.github.io/FFT/`), have it call
+`window.AndroidClipboard ? window.AndroidClipboard.write(pair) : navigator.clipboard.writeText(pair)`
+instead of a bare `navigator.clipboard.writeText(pair)` — that one-line
+change is enough for it to work both there and on desktop unmodified.
+
+To point the injection at a different broker or add one, edit `PAIRS` and
+`TRINITY_SYNC_DOMAINS` — `PAIRS` lives in `assets/trinity_sync.js`,
+`TRINITY_SYNC_DOMAINS` in `MainActivity.java`.
