@@ -36,42 +36,26 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-/**
- * Creates the fullscreen, frameless Activity: a native WebView per split
- * pane (via PaneManager) stacked above a persistent bottom-bar WebView
- * (assets/bar.html), the Android equivalent of Electron's main.js +
- * index.html + preload-index.js all at once.
- *
- * Panes are real android.webkit.WebView instances - not <iframe>s inside a
- * single WebView - the same way Electron's <webview> tag hosts a fully
- * independent guest page. This matters: a lot of real sites refuse to be
- * framed (X-Frame-Options / frame-ancestors), which would silently break an
- * iframe-based version but doesn't affect a real top-level WebView.
- *
- * Bookmarks, downloads, zoom, fullscreen, split control, and back
- * navigation are all handled here natively and pushed to / invoked from
- * bar.html through WebAppInterface (window.AndroidAPI), mirroring the
- * ipcMain handlers + splitAPI/barAPI bridges main.js and preload-index.js
- * provide on desktop.
- *
- * NOTE: This build intentionally omits TRINITY_SYNC (trinity_sync.js) and
- * the automatic domain-based script injection that referenced it. See the
- * project README section "About TRINITY_SYNC" for why.
- */
 public class MainActivity extends AppCompatActivity implements DownloadsController.Listener {
 
-    // Change this to whatever you want the browser to open with on launch -
-    // same idea as START_URL in main.js.
     private static final String START_URL = "https://example.com";
 
-    private static final float ZOOM_MIN = -6f; // ~25%, matches ZOOM_MIN in main.js
-    private static final float ZOOM_MAX = 9f;  // ~400%, matches ZOOM_MAX in main.js
+    private static final float ZOOM_MIN = -6f; 
+    private static final float ZOOM_MAX = 9f;  
     private static final float ZOOM_STEP = 0.5f;
 
     private static final int FILE_CHOOSER_REQUEST_CODE = 51426;
+
+    // TRINITY_SYNC: Authorized domains for script injection
+    private static final List<String> TRINITY_SYNC_DOMAINS = Arrays.asList(
+            "olymptrade.com",
+            "pocketoption.com"
+    );
 
     private FrameLayout paneSlot;
     private WebView barWebView;
@@ -130,9 +114,6 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         setActivePane(firstPane);
     }
 
-    // -------------------------------------------------------------------
-    // Bottom bar
-    // -------------------------------------------------------------------
     private void setupBarWebView() {
         WebSettings s = barWebView.getSettings();
         s.setJavaScriptEnabled(true);
@@ -142,20 +123,12 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         barWebView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
-                // Bar just (re)loaded - resync it with current state, the way
-                // did-finish-load -> init-pane works on desktop. Bookmarks /
-                // downloads are pulled by bar.js itself on load via the
-                // synchronous getBookmarksJson()/getDownloadsJson() calls.
                 pushActivePaneState();
             }
         });
         barWebView.loadUrl("file:///android_asset/bar.html");
     }
 
-    // -------------------------------------------------------------------
-    // Pane creation - this is the WebViewFactory PaneManager calls for
-    // every leaf, the native equivalent of renderLeaf() in index.html.
-    // -------------------------------------------------------------------
     private WebView createPaneWebView(String url) {
         WebView wv = new WebView(this);
         WebSettings s = wv.getSettings();
@@ -172,6 +145,9 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
 
+        // TRINITY_SYNC: Bind the clipboard bridge to the window object
+        wv.addJavascriptInterface(new ClipboardBridge(this), "AndroidClipboard");
+
         wv.setFocusable(true);
         wv.setFocusableInTouchMode(true);
         wv.setTag(url);
@@ -179,18 +155,11 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         wv.setWebViewClient(new PaneWebViewClient());
         wv.setWebChromeClient(new PaneWebChromeClient());
 
-        // Mirrors session.defaultSession.on('will-download') in main.js -
-        // WebView has no built-in download interception, so this is the
-        // hook that stands in for it.
         wv.setDownloadListener((downloadUrl, userAgent, contentDisposition, mimeType, contentLength) -> {
             String cookie = CookieManager.getInstance().getCookie(downloadUrl);
             downloadsController.startDownload(downloadUrl, userAgent, contentDisposition, mimeType, contentLength, cookie);
         });
 
-        // Touch-to-focus - the primary source of truth for "active pane",
-        // the same role the DOM 'focus' listener on each <webview> plays in
-        // renderLeaf() (index.html). Doesn't consume the event, so the
-        // WebView still handles the touch normally underneath.
         wv.setOnTouchListener((v, event) -> {
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN && v != activePane) {
                 setActivePane((WebView) v);
@@ -206,7 +175,7 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
     private class PaneWebViewClient extends WebViewClient {
         @Override
         public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-            zoomLevels.put(view, 0f); // reset zoom bookkeeping, matches contents.setZoomLevel(0) on did-navigate
+            zoomLevels.put(view, 0f); 
         }
 
         @Override
@@ -214,6 +183,16 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
             view.setTag(url);
             if (view == activePane) pushActivePaneState();
             saveSession();
+
+            // TRINITY_SYNC: Check domain and inject script
+            if (url != null) {
+                for (String domain : TRINITY_SYNC_DOMAINS) {
+                    if (url.contains(domain)) {
+                        injectTrinitySyncScript(view);
+                        break;
+                    }
+                }
+            }
         }
 
         @Override
@@ -224,7 +203,23 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
 
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-            return false; // no domain lock, same as the desktop version (see README)
+            return false;
+        }
+    }
+
+    // TRINITY_SYNC: Helper to read the asset file and execute it in the WebView context
+    private void injectTrinitySyncScript(WebView webView) {
+        try {
+            InputStream is = getAssets().open("trinity_sync.js");
+            int size = is.available();
+            byte[] buffer = new byte[size];
+            is.read(buffer);
+            is.close();
+
+            String script = new String(buffer, StandardCharsets.UTF_8);
+            webView.evaluateJavascript(script, null);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
@@ -244,9 +239,6 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
 
         @Override
         public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
-            // Android has no lightweight equivalent of Electron opening a
-            // second BrowserWindow for window.open()/target="_blank" -
-            // resolve the URL and load it in this same pane instead.
             WebView transportView = new WebView(MainActivity.this);
             transportView.setWebViewClient(new WebViewClient() {
                 @Override
@@ -280,9 +272,6 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         filePathCallback = null;
     }
 
-    // -------------------------------------------------------------------
-    // Active pane tracking
-    // -------------------------------------------------------------------
     private void setActivePane(WebView pane) {
         activePane = pane;
         paneManager.setActivePane(pane);
@@ -308,10 +297,6 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         runJs("window.onActivePaneState && window.onActivePaneState(" + state.toString() + ")");
     }
 
-    // -------------------------------------------------------------------
-    // Handlers called from WebAppInterface (window.AndroidAPI on bar.html) -
-    // these mirror the ipcMain.on(...) handlers in main.js one-for-one.
-    // -------------------------------------------------------------------
     public void handleNavigate(String rawUrl) {
         String target = normalizeUrl(rawUrl);
         if (target == null || activePane == null) return;
@@ -343,9 +328,6 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         fullscreenActive = !fullscreenActive;
         applySystemBars(fullscreenActive);
         barWebView.setVisibility(fullscreenActive ? View.GONE : View.VISIBLE);
-        // The bottom bar (and its own fullscreen button) is hidden in
-        // fullscreen, so this floating button is the only on-screen way
-        // out of fullscreen besides the back button.
         exitFullscreenButton.setVisibility(fullscreenActive ? View.VISIBLE : View.GONE);
         runJs("window.onFullscreenChanged && window.onFullscreenChanged(" + fullscreenActive + ")");
     }
@@ -443,9 +425,6 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
     }
 
     public void handleShowDownloadInFolder(String id) {
-        // Android has no "reveal in folder" concept - the closest equivalent
-        // is the system Downloads app, same destination every download in
-        // this app lands in.
         try {
             startActivity(new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS));
         } catch (ActivityNotFoundException e) {
@@ -470,11 +449,6 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         runJs("window.onDownloadsUpdated && window.onDownloadsUpdated(" + list.toString() + ")");
     }
 
-    // -------------------------------------------------------------------
-    // Session persistence - same trigger points as documented in the
-    // README: split / close / navigate, in-page navigation, and onPause as
-    // a safety net.
-    // -------------------------------------------------------------------
     private void saveSession() {
         JSONObject tree = paneManager.serialize();
         if (tree != null) sessionStore.save(tree.toString());
@@ -492,12 +466,6 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         super.onDestroy();
     }
 
-    // -------------------------------------------------------------------
-    // Back button: exits fullscreen first (mirrors Esc in main.js), then
-    // goes back in the active pane if it has history, matching Backspace's
-    // role on desktop. Falls through to the default (finish) only when
-    // neither applies, since there's no window chrome to close otherwise.
-    // -------------------------------------------------------------------
     @Override
     public void onBackPressed() {
         if (fullscreenActive) {
@@ -511,9 +479,6 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         super.onBackPressed();
     }
 
-    // -------------------------------------------------------------------
-    // URL normalization - same rules as normalizeUrl() in main.js.
-    // -------------------------------------------------------------------
     private static String normalizeUrl(String raw) {
         if (raw == null) return null;
         String value = raw.trim();

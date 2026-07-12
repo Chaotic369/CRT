@@ -72,8 +72,8 @@ public class PaneManager {
     // bottom-right corner. Unlike the focus border, this is always visible
     // (even with a single pane, even in fullscreen) since it's the only
     // way to zoom now that the bar's zoom buttons are gone.
-    private static final int ZOOM_CONTROL_WIDTH_DP = 34;
-    private static final int ZOOM_CONTROL_BUTTON_HEIGHT_DP = 34;
+    private static final int ZOOM_CONTROL_WIDTH_DP = 40;
+    private static final int ZOOM_CONTROL_BUTTON_HEIGHT_DP = 40;
     private static final int ZOOM_CONTROL_MARGIN_DP = 10;
     private static final int ZOOM_CONTROL_CORNER_RADIUS_DP = 8;
     private static final int ZOOM_CONTROL_BG_COLOR = 0xCC18181A;
@@ -339,7 +339,14 @@ public class PaneManager {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         zoomLp.gravity = Gravity.BOTTOM | Gravity.END;
         zoomLp.setMargins(0, 0, dpToPx(ZOOM_CONTROL_MARGIN_DP), dpToPx(ZOOM_CONTROL_MARGIN_DP));
-        wrapper.addView(createZoomControl(webView), zoomLp);
+        View zoomControl = createZoomControl(webView);
+        wrapper.addView(zoomControl, zoomLp);
+        // Belt-and-suspenders: guarantees the zoom control is the topmost
+        // child for both drawing AND touch dispatch, in case the WebView's
+        // own hardware layer ever won a Z-order tie against a same-index
+        // sibling (the class of bug where a button overlapping a WebView
+        // renders fine but silently never receives taps).
+        wrapper.bringChildToFront(zoomControl);
 
         leafWrappers.put(webView, wrapper);
         return wrapper;
@@ -350,7 +357,6 @@ public class PaneManager {
         LinearLayout group = new LinearLayout(context);
         group.setOrientation(LinearLayout.VERTICAL);
         group.setBackground(zoomControlBackground());
-        group.setElevation(dpToPx(2));
 
         int buttonSize = dpToPx(ZOOM_CONTROL_BUTTON_HEIGHT_DP);
         int width = dpToPx(ZOOM_CONTROL_WIDTH_DP);
@@ -383,6 +389,35 @@ public class PaneManager {
             if (zoomListener == null) return;
             if (isZoomIn) zoomListener.onZoomIn(pane); else zoomListener.onZoomOut(pane);
         });
+
+        // Explicitly claim the whole touch gesture on ACTION_DOWN and fire
+        // the click ourselves on ACTION_UP, instead of trusting the default
+        // click detection inside View#onTouchEvent to win the gesture
+        // against the WebView sitting directly underneath. Without this, a
+        // DOWN event that isn't unambiguously consumed here can end up
+        // handled by the WebView instead, and the button never sees the
+        // matching UP - it looks like a normal button but silently never
+        // registers a tap.
+        button.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    v.setPressed(true);
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    v.setPressed(false);
+                    if (event.getX() >= 0 && event.getX() <= v.getWidth()
+                            && event.getY() >= 0 && event.getY() <= v.getHeight()) {
+                        v.performClick();
+                    }
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    v.setPressed(false);
+                    return true;
+                default:
+                    return true;
+            }
+        });
+
         return button;
     }
 
