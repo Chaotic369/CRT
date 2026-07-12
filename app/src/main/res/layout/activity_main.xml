@@ -1,11 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#18181A">
 
-    <WebView
-        android:id="@+id/webview"
+    <!-- Split-pane WebViews are added/removed here at runtime by PaneManager. -->
+    <FrameLayout
+        android:id="@+id/pane_slot"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
-</FrameLayout>
+    <!-- Persistent bottom bar, hidden while in fullscreen (see MainActivity#handleToggleFullscreen). -->
+    <WebView
+        android:id="@+id/bar_webview"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:background="#00000000" />
+
+</LinearLayout>

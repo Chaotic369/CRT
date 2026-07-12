@@ -4,15 +4,14 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 /**
- * Persists the current pane tree (split layout + ratios + each pane's URL)
- * as a single JSON blob in SharedPreferences, so the app can reopen exactly
- * where you left off. Same storage pattern as BookmarkStore, just a
- * different key - this is what lets MainActivity restore the whole
- * split-screen session on launch instead of always starting from START_URL.
+ * Persists the serialized pane tree (see PaneManager.serialize()) across
+ * process death / relaunch, the same role a saved-window-state file plays
+ * on desktop. Just a single JSON string under one key - PaneManager owns
+ * the shape of that JSON.
  */
 public class SessionStore {
 
-    private static final String PREFS_NAME = "crt_session";
+    private static final String PREFS_NAME = "urlhud_session";
     private static final String KEY_TREE = "pane_tree_json";
 
     private final SharedPreferences prefs;
@@ -21,16 +20,17 @@ public class SessionStore {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    /** Returns the saved tree JSON, or null if there's no saved session yet. */
-    public synchronized String load() {
+    /** Returns the last saved pane-tree JSON string, or null if none was saved yet. */
+    public String load() {
+        if (!prefs.contains(KEY_TREE)) return null;
         return prefs.getString(KEY_TREE, null);
     }
 
-    public synchronized void save(String treeJson) {
+    public void save(String treeJson) {
         prefs.edit().putString(KEY_TREE, treeJson).apply();
     }
 
-    public synchronized void clear() {
+    public void clear() {
         prefs.edit().remove(KEY_TREE).apply();
     }
 }

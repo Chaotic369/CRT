@@ -8,13 +8,14 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * Persists the bookmark list as a JSON array in SharedPreferences. This is
- * the Android equivalent of the bookmarks.json file main.js keeps in
- * Electron's userData folder (loadBookmarks / saveBookmarks).
+ * Simple JSON-array-in-SharedPreferences bookmark store. Each bookmark is
+ * {"label": "...", "url": "..."}; bar.js addresses entries by their
+ * position in the array, matching the index-based edit/delete calls from
+ * WebAppInterface.
  */
 public class BookmarkStore {
 
-    private static final String PREFS_NAME = "crt_bookmarks";
+    private static final String PREFS_NAME = "urlhud_bookmarks";
     private static final String KEY_BOOKMARKS = "bookmarks_json";
 
     private final SharedPreferences prefs;
@@ -23,50 +24,45 @@ public class BookmarkStore {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
-    public synchronized JSONArray load() {
-        String raw = prefs.getString(KEY_BOOKMARKS, "[]");
+    public String toJson() {
+        return loadArray().toString();
+    }
+
+    public synchronized void add(JSONObject bookmark) {
+        JSONArray arr = loadArray();
+        arr.put(bookmark);
+        saveArray(arr);
+    }
+
+    public synchronized void edit(int index, JSONObject bookmark) {
+        JSONArray arr = loadArray();
+        if (index < 0 || index >= arr.length()) return;
         try {
-            return new JSONArray(raw);
+            arr.put(index, bookmark);
+            saveArray(arr);
+        } catch (JSONException ignored) {}
+    }
+
+    public synchronized void delete(int index) {
+        JSONArray arr = loadArray();
+        if (index < 0 || index >= arr.length()) return;
+        JSONArray next = new JSONArray();
+        for (int i = 0; i < arr.length(); i++) {
+            if (i == index) continue;
+            next.put(arr.opt(i));
+        }
+        saveArray(next);
+    }
+
+    private JSONArray loadArray() {
+        try {
+            return new JSONArray(prefs.getString(KEY_BOOKMARKS, "[]"));
         } catch (JSONException e) {
             return new JSONArray();
         }
     }
 
-    public synchronized String toJson() {
-        return load().toString();
-    }
-
-    private synchronized void save(JSONArray arr) {
+    private void saveArray(JSONArray arr) {
         prefs.edit().putString(KEY_BOOKMARKS, arr.toString()).apply();
-    }
-
-    public synchronized void add(JSONObject bookmark) {
-        JSONArray arr = load();
-        arr.put(bookmark);
-        save(arr);
-    }
-
-    public synchronized void edit(int index, JSONObject bookmark) {
-        JSONArray arr = load();
-        if (index >= 0 && index < arr.length()) {
-            try {
-                arr.put(index, bookmark);
-                save(arr);
-            } catch (JSONException ignored) {}
-        }
-    }
-
-    public synchronized void delete(int index) {
-        JSONArray arr = load();
-        if (index >= 0 && index < arr.length()) {
-            JSONArray next = new JSONArray();
-            for (int i = 0; i < arr.length(); i++) {
-                if (i == index) continue;
-                try {
-                    next.put(arr.get(i));
-                } catch (JSONException ignored) {}
-            }
-            save(next);
-        }
     }
 }
