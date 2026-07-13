@@ -1,0 +1,2786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+  // Zero-Latency Local Cache Boot
+  (function() {
+    if (localStorage.getItem('sovereign_theme') === 'light') {
+        document.documentElement.classList.add('light-theme');
+    } else {
+        document.documentElement.classList.remove('light-theme');
+    }
+    
+    const cachedWp = localStorage.getItem('sovereign_wp_url');
+    if (cachedWp) {
+        document.documentElement.classList.add('has-wallpaper');
+        const style = document.createElement('style');
+        style.innerHTML = `#bgOverlay { background-image: url("${cachedWp}") !important; }`;
+        document.head.appendChild(style);
+    }
+  })();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Sovereign System - Files & Notes</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<style>
+:root {
+  /* Claude Dark Theme */
+  --bg-base: #000000;
+  --bg-surface: #1c1c1b;
+  --bg-solid-surface: #1c1c1b;
+  --bg-box: #000000;
+  --text-main: #e5e0da;
+  --text-muted: #8b8984;
+  --accent: #d8cebc;
+  --blue: #5c9dff; --green: #39d353; --red: #f85149; --amber: #e3b341; --teal: #2dd4bf;
+  
+  /* Dark Mode Note Phases (Balanced Brightness) */
+  --note-base: rgba(255, 255, 255, 0.08);
+  --note-amber: rgba(227, 179, 65, 0.22);
+  --note-blue: rgba(92, 157, 255, 0.22);
+  --note-green: rgba(57, 211, 83, 0.22);
+  --note-red: rgba(248, 81, 73, 0.22);
+  --note-purple: rgba(188, 140, 255, 0.22);
+}
+html.light-theme {
+  /* Claude Light Theme */
+  --bg-base: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-solid-surface: #ffffff;
+  --bg-box: #ffffff;
+  --text-main: #191813;
+  --text-muted: #5c5a55;
+  --accent: #e5e0da;
+
+  /* Light Mode Note Phases (Brighter pastel for perfect text contrast) */
+  --note-base: rgba(0, 0, 0, 0.04);
+  --note-amber: rgba(227, 179, 65, 0.2);
+  --note-blue: rgba(92, 157, 255, 0.2);
+  --note-green: rgba(57, 211, 83, 0.2);
+  --note-red: rgba(248, 81, 73, 0.2);
+  --note-purple: rgba(188, 140, 255, 0.2);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; outline: none !important; border: none; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg-base); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--text-main); transition: background 0.3s, color 0.3s; }
+
+/* Massive slider size for flawless tablet touch */
+::-webkit-scrollbar { width: 0px; height: 0px; display: none; }
+
+/* Huge, unmistakable expanding button (textarea resize handle) */
+::-webkit-resizer { 
+  background: var(--amber); 
+  border-top-left-radius: 8px; 
+  border-bottom-right-radius: 16px;
+  box-shadow: inset 2px 2px 4px rgba(0,0,0,0.2); 
+}
+
+/* WORKSPACE LAYOUT */
+#mainWorkspace {
+  position: fixed; top: 0; bottom: 0; left: 0; right: 0;
+  background: var(--bg-base); color: var(--text-main);
+  padding: 70px 24px 90px 24px; overflow-y: auto; z-index: 1;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 32px; align-content: start;
+  transition: background 0.3s;
+}
+
+.workspace-panel { display: flex; flex-direction: column; gap: 16px; }
+.panel-header { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; color: var(--amber); letter-spacing: 0.08em; display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; }
+
+/* TOP RIGHT MINI BUTTONS */
+.top-bar-actions {
+  position: fixed; top: 16px; right: 20px; z-index: 10000; display: flex; gap: 4px; align-items: center;
+  background: rgba(22, 22, 22, 0.45); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-radius: 24px; padding: 4px 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+html.light-theme .top-bar-actions {
+  background: rgba(255, 255, 255, 0.85);
+}
+.top-bar-actions .action-mini-btn {
+  background: transparent !important; box-shadow: none !important; width: 30px; height: 30px;
+}
+#storage-toolbar .action-mini-btn {
+  background: transparent !important; box-shadow: none !important;
+}
+html.has-wallpaper .top-bar-actions .action-mini-btn,
+html.has-wallpaper #storage-toolbar .action-mini-btn {
+  box-shadow: none !important; background: transparent !important;
+}
+.action-mini-btn {
+  width: 36px; height: 36px; border-radius: 50%; background: var(--bg-surface); color: var(--text-main);
+  display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1); transition: transform 0.2s, color 0.2s; border: none !important;
+}
+.action-mini-btn:active { transform: scale(0.9); }
+
+/* FLOATING SQUIRCLE UPLOAD BUTTON (BOTTOM RIGHT) */
+#uploadSquircleBtn {
+  position: fixed; bottom: 44px; right: 20px; z-index: 10000; width: 56px; height: 56px; border-radius: 50%;
+  background: var(--bg-surface); color: var(--text-main); border: none !important;
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+  cursor: pointer; transition: transform 0.2s; box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+#uploadSquircleBtn:hover { transform: translateY(-3px); }
+#uploadSquircleBtn:active { transform: scale(0.92); }
+
+button.btn {
+  background: var(--bg-base); border: none !important; color: var(--text-main); border-radius: 24px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: filter 0.2s, transform 0.1s;
+}
+button.btn:hover { filter: brightness(0.9); }
+html:not(.light-theme) button.btn:hover { filter: brightness(1.2); }
+button.btn:active { transform: scale(0.96); }
+
+/* FILE LIST ENGINE */
+#filesGridContainer {
+  display: flex; flex-direction: column; gap: 12px; align-content: start;
+}
+
+.file-card {
+  background: var(--bg-surface); border: none !important;
+  border-radius: 24px; padding: 12px 16px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 16px;
+  transition: transform 0.15s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  contain: layout style paint;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+}
+.file-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.1); }
+
+/* MASONRY GRID SYSTEM */
+#notes-container {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  grid-auto-rows: 4px;
+  grid-auto-flow: dense;
+  gap: 16px;
+  width: 100%;
+  align-items: start;
+}
+
+.note-card {
+  width: 100%; min-width: 0; border: none !important;
+  display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 24px;
+  cursor: grab; transition: transform 0.2s, box-shadow 0.2s;
+  color: var(--text-main); font-size: 13px; line-height: 1.5; position: relative;
+  contain: layout style paint;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+}
+.note-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.1); }
+.note-card:active { cursor: grabbing; }
+
+/* PC Grid Logic (6 Columns) */
+.note-card.span-tiny { grid-column: span 2; }
+.note-card.span-small { grid-column: span 2; }
+.note-card.span-half { grid-column: span 3; }
+
+/* Tablet & Mobile Layout Engine (Strict 4-Column base) */
+@media (max-width: 1200px) { 
+  #notes-container { grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .note-card.span-tiny { grid-column: span 1; }  
+  .note-card.span-small { grid-column: span 2; } 
+  .note-card.span-half { grid-column: span 2; }  
+}
+
+/* Fallback for extremely small phones */
+@media (max-width: 380px) { 
+  #notes-container { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .note-card.span-tiny { grid-column: span 1; }  
+  .note-card.span-small { grid-column: span 2; } 
+  .note-card.span-half { grid-column: span 2; }  
+}
+
+.sortable-ghost { opacity: 0.4; transform: scale(0.98); }
+.sortable-drag { cursor: grabbing !important; }
+.note-card-title { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+
+/* Dynamic Note Gallery Engine */
+.note-gallery { display: grid; gap: 4px; border-radius: 16px; overflow: hidden; margin-bottom: 8px; }
+.note-gallery.count-1 { grid-template-columns: 1fr; }
+.note-gallery.count-2 { grid-template-columns: 1fr 1fr; }
+.note-gallery.count-3 { grid-template-columns: 1fr 1fr; }
+.note-gallery.count-many { grid-template-columns: 1fr 1fr; }
+.note-gallery-item { position: relative; overflow: hidden; cursor: pointer; background: var(--bg-base); }
+.note-gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s; }
+.note-gallery-item:hover img { transform: scale(1.05); }
+
+.folder-card {
+  background: var(--bg-surface); padding: 6px 14px; border-radius: 20px; display: flex; align-items: center; gap: 8px;
+  cursor: pointer; transition: transform 0.15s; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  font-weight: 600; font-size: 13px; border: none !important;
+  contain: layout style paint; max-width: 160px; flex-shrink: 0; white-space: nowrap;
+}
+.folder-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.1); }
+
+.category-card {
+  background: var(--bg-surface); padding: 16px 8px; border-radius: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: none !important;
+  width: 106px; text-align: center; flex-shrink: 0;
+}
+.category-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.1); }
+.category-icon-wrapper {
+  width: 52px; height: 52px; border-radius: 20px; background: var(--bg-base); display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 2px;
+}
+
+.quick-input-bar { position: fixed; bottom: 44px; right: 88px; z-index: 10000; width: calc(100vw - 110px); max-width: 280px; height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 20px; background: rgba(22, 22, 22, 0.45); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 28px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); border: none !important; outline: none !important; transition: transform 0.2s, box-shadow 0.2s; }
+.quick-input-bar:focus-within { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,0.2); }
+#quick-note-input { color: #ffffff !important; }
+#quick-note-input::placeholder { color: rgba(255, 255, 255, 0.7) !important; opacity: 1; }
+html.light-theme .quick-input-bar { background: rgba(255, 255, 255, 0.85); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+html.light-theme #quick-note-input { color: #191813 !important; }
+html.light-theme #quick-note-input::placeholder { color: rgba(25, 24, 19, 0.6) !important; opacity: 1; }
+
+#storage-toolbar { background: rgba(22, 22, 22, 0.45); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 24px; padding: 4px 8px; }
+html.light-theme #storage-toolbar { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+
+/* UTILS & MODALS */
+.file-row-input {
+  width: 100%; background: var(--bg-base); border: none !important; color: var(--text-main);
+  padding: 10px 16px; border-radius: 24px; outline: none; font-family: 'JetBrains Mono', monospace; font-size: 13px;
+}
+.file-row-input:focus { filter: brightness(0.95); }
+html:not(.light-theme) .file-row-input:focus { filter: brightness(1.2); }
+
+#toast {
+  position: fixed; top: 80px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 32px; font-size: 13px; font-weight: 500;
+  background: var(--bg-surface); color: var(--text-main); border: none !important;
+  z-index: 50000; display: none; max-width: 90vw; text-align: center; white-space: pre-line;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+#toast.show { display: block; animation: slideUp 150ms ease-out forwards; }
+#toast.warn { color: var(--amber); } #toast.err { color: var(--red); } #toast.info { color: var(--blue); }
+
+@keyframes slideUp{from{opacity:0;transform:translate(-50%, 10px) translateZ(0)}to{opacity:1;transform:translate(-50%, 0) translateZ(0)}}
+
+.modal-base {
+  position: fixed; z-index: 40000; background: rgba(22, 22, 22, 0.65); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 32px;
+  padding: 24px; color: var(--text-main); font-size: 13px; border: none !important; outline: none !important;
+  top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90vw; max-width: 400px; display: none; flex-direction: column; gap: 12px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+}
+.modal-base.open { display: flex; }
+
+#statusBar {
+  position: fixed; bottom: 0; left: 0; right: 0; height: 24px; background: var(--bg-surface); 
+  display: flex; align-items: center; padding: 0 12px; gap: 12px; font-size: 11px; font-weight: 500; color: var(--text-muted); z-index: 9990;
+  border: none !important; transition: background 0.3s;
+}
+#statusBar .sb-item { white-space: nowrap; }
+#statusBar .sb-ok { color: var(--green); }
+#statusBar .sb-sep { color: var(--text-muted); opacity: 0.3; }
+
+#progressBar {
+  position: fixed; top: 0; left: 0; height: 3px; background: var(--blue); z-index: 50000;
+  width: 0%; display: none; box-shadow: none; border: none !important; transition: width 0.1s linear;
+}
+#progressBar.active { display: block; }
+
+.md-preview pre { background: rgba(0,0,0,0.2) !important; padding: 8px; border-radius: 8px; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 11px; margin: 4px 0; border: none !important; }
+.md-preview strong { color: var(--amber); font-weight: 700; }
+.md-preview em { color: var(--teal); font-style: italic; }
+.md-preview code { font-family: 'JetBrains Mono', monospace; background: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px; font-size: 11px; }
+
+#multiSelectBar {
+  position: fixed; bottom: -300px; left: 50%; transform: translateX(-50%);
+  background: rgba(22, 22, 22, 0.65); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  padding: 12px 24px; border-radius: 32px; border: none !important; outline: none !important;
+  display: flex; gap: 16px; align-items: center; box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+  z-index: 45000; transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+#multiSelectBar.active { bottom: 120px; }
+
+.file-checkbox {
+  appearance: none; width: 18px; height: 18px; border: 2px solid var(--text-main);
+  border-radius: 50%; background: rgba(0, 0, 0, 0.35); cursor: pointer; transition: all 0.2s; position: relative; flex-shrink:0;
+}
+html.light-theme .file-checkbox {
+  background: #ffffff;
+}
+/* Invisible hit-area expander to prevent accidental file opens */
+.file-checkbox::before {
+  content: ''; position: absolute; top: -20px; bottom: -20px; left: -20px; right: -20px; border-radius: 50%;
+}
+.file-checkbox:checked { background: var(--blue); border-color: var(--blue); }
+.file-checkbox:checked::after {
+  content: ''; position: absolute; left: 5px; top: 2px; width: 4px; height: 8px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+
+#storage-search-input:focus, #storage-search-input:valid {
+  width: 120px !important; opacity: 1 !important; padding: 0 4px !important; margin-left: 4px; cursor: text !important;
+}
+
+#global-drop-overlay {
+  position: fixed; inset: 0; background: rgba(24, 24, 23, 0.85);
+  will-change: opacity;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  z-index: 99999; display: none; align-items: center; justify-content: center;
+  color: var(--teal); font-size: 28px; font-weight: 700; flex-direction: column; gap: 20px;
+  border: none !important; margin: 16px; border-radius: 40px; pointer-events: none;
+}
+
+/* Glassmorphism Wallpaper UI */
+html.has-wallpaper {
+  --bg-base: rgba(0, 0, 0, 0.15);
+  --bg-surface: rgba(0, 0, 0, 0.30);
+}
+html.has-wallpaper #bgOverlay {
+  filter: brightness(0.45);
+}
+html.has-wallpaper.light-theme {
+  --bg-base: rgba(255, 255, 255, 0.5);
+  --bg-surface: #ffffff;
+}
+html.has-wallpaper.light-theme #bgOverlay {
+  display: block;
+  filter: brightness(1.8) contrast(0.6) grayscale(0.2);
+}
+html.has-wallpaper.light-theme body, 
+html.has-wallpaper.light-theme #mainWorkspace { 
+  background: transparent !important; 
+}
+html.has-wallpaper body, html.has-wallpaper #mainWorkspace { 
+  background: transparent !important; 
+}
+/* Scrollable Cards: Lighter blur + CSS Containment to stop off-screen rendering lag */
+/* Scrollable Cards: Lighter blur + CSS Containment to stop off-screen rendering lag */
+html.has-wallpaper .note-card,
+html.has-wallpaper .file-card,
+html.has-wallpaper .folder-card,
+html.has-wallpaper .category-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 80px;
+  border: none !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1) !important;
+}
+html.is-scrolling.has-wallpaper .note-card,
+html.is-scrolling.has-wallpaper .file-card,
+html.is-scrolling.has-wallpaper .folder-card,
+html.is-scrolling.has-wallpaper .category-card {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Fixed UI: High quality blur, hardware accelerated */
+html.has-wallpaper .modal-base,
+html.has-wallpaper #multiSelectBar,
+html.has-wallpaper #statusBar,
+html.has-wallpaper .top-bar-actions,
+html.has-wallpaper .action-mini-btn,
+html.has-wallpaper button.btn,
+html.has-wallpaper .file-row-input,
+html.has-wallpaper #mediaControlsBar,
+html.has-wallpaper #fullNoteModal > div,
+html.has-wallpaper #toast {
+  transform: translateZ(0);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15) !important;
+}
+html.has-wallpaper #storage-toolbar {
+  transform: translateZ(0);
+  border: none !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15) !important;
+}
+html.has-wallpaper .quick-input-bar {
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  transform: translateZ(0);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15) !important;
+}
+html.has-wallpaper .quick-input-bar {
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  transform: translateZ(0);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Fixed UI: High quality blur, hardware accelerated */
+
+html.has-wallpaper #uploadSquircleBtn {
+  transform: translateZ(0);
+  background: rgba(25, 24, 19, 0.85) !important;
+  color: #f8f7f3 !important;
+  border: none !important;
+}
+html.has-wallpaper.light-theme #uploadSquircleBtn {
+  background: rgba(229, 224, 218, 0.85) !important;
+  color: #181817 !important;
+}
+</style>
+</head>
+<body>
+
+<div id="bgOverlay" style="position:fixed; inset:0; z-index:-1; background-size:cover; background-position:center center; background-repeat:no-repeat; transition:filter 0.3s ease;"></div>
+<input type="file" id="bgUploadInput" accept="image/*" style="display:none;" multiple onchange="window.setWallpaper(event)">
+
+<div id="progressBar"></div>
+
+<div class="top-bar-actions">
+  <button class="action-mini-btn" onclick="window.openWallpaperModal(event)" title="Wallpapers">
+    <i class="fa-solid fa-image"></i>
+  </button>
+  <button class="action-mini-btn" onclick="window.checkStorage()" title="Storage Info">
+    <i class="fa-solid fa-hard-drive"></i>
+  </button>
+  <button class="action-mini-btn" onclick="window.toggleTheme()" title="Toggle Theme">
+    <i class="fa-solid fa-circle-half-stroke"></i>
+  </button>
+</div>
+
+<input type="file" id="fileUploadInput" style="display:none;" multiple onchange="window.uploadFile(event)">
+<button id="uploadSquircleBtn" onclick="document.getElementById('fileUploadInput').click()" title="Upload Document">
+  <i class="fa-solid fa-cloud-arrow-up"></i>
+</button>
+
+<div class="quick-input-bar">
+  <i class="fa-solid fa-bolt" style="color:var(--amber); font-size:16px;"></i>
+  <input id="quick-note-input" type="text" style="flex:1; background:transparent; border:none; color:#ffffff; font-family:inherit; font-size:14px; outline:none;" placeholder="Write me !" autocomplete="off" onkeydown="if(event.key==='Enter')window.quickAddNote()">
+  </div>
+
+<div id="mainWorkspace">
+  
+  <div class="workspace-panel">
+      <div class="panel-header">
+             <div style="display:flex; align-items:center; gap:8px;">
+               <button id="btn-back-folder" class="action-mini-btn" style="display:none; width:26px; height:26px; box-shadow:none; transition: transform 0.2s, color 0.2s;" onclick="window.viewRootFolder()" title="Back to Root"><i class="fa-solid fa-arrow-left"></i></button>
+                              <span id="notes-view-title" style="display:flex; align-items:center;" title="Quick Notes"><i class="fa-regular fa-note-sticky" style="font-size:20px; color:var(--text-main);"></i></span>
+               <input id="notes-folder-edit" type="text" class="file-row-input" style="display:none; width:160px; padding:6px 10px; margin-left:8px;" onchange="window.renameCurrentFolder(this.value)">
+             </div>
+          </div>
+    
+      <div id="folders-container" style="display:flex; flex-wrap:nowrap; overflow-x:auto; align-items:center; gap:8px; margin-bottom:12px; padding-bottom:4px; scrollbar-width:none;"></div>
+      
+            <div id="note-back-dropzone" class="folder-card" style="display:none; background:var(--bg-surface); color:var(--text-main); justify-content:center; border: 1px dashed var(--amber) !important; margin-bottom:16px; max-width:100%; width:100%; white-space:normal;">
+                          <i class="fa-solid fa-arrow-left" style="color:var(--amber);"></i>
+                          <div style="font-weight:600;">Drop here to move out of folder</div>
+                        </div>
+    
+          <div id="notes-container"></div>
+  </div>
+
+  <div class="workspace-panel">
+          <div class="panel-header" style="border: none !important; margin-bottom: 12px; min-height: 34px;">
+                      <div style="display: flex; align-items: center; gap: 8px; height: 26px; flex: 1;">
+                        <button id="btn-back-storage" class="action-mini-btn" style="display:none; width:26px; height:26px; box-shadow:none; transition: transform 0.2s, color 0.2s;" onclick="window.goBackStorage()" title="Back"><i class="fa-solid fa-arrow-left"></i></button>
+                                                                        <i class="fa-regular fa-folder-open" style="font-size:20px; color:var(--text-main);" title="Cloud Storage Files"></i>
+                        <span id="storage-path-display" style="font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--text-muted);"></span>
+        
+                        <div id="storage-toolbar" style="margin-left:auto; display:flex; gap:6px; align-items:center;">
+                                                    <div id="search-container" style="display:flex; align-items:center; overflow:hidden; transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border:none !important;">
+                                                                                    <label for="storage-search-input" style="margin:0; cursor:pointer; display:flex; justify-content:center; align-items:center; width:20px; height:20px;"><i class="fa-solid fa-magnifying-glass" style="color:var(--text-main); font-size:13px;"></i></label>
+                                                            <input type="text" id="storage-search-input" required style="background:transparent; border:none; color:var(--text-main); font-size:13px; outline:none; transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1); padding:0; width:0; opacity:0; cursor:pointer;" autocomplete="off" onkeyup="clearTimeout(window._searchDebounce); window._searchDebounce = setTimeout(window.loadFiles, 300)">
+                                                        </div>
+                            <button class="action-mini-btn" style="width:26px; height:26px; box-shadow:none; background:transparent; color:var(--text-main);" onclick="window.toggleFormatFilter()" title="Filter by Format"><i class="fa-solid fa-table-cells-large" id="filter-icon" style="font-size:16px;"></i></button>
+                            <button class="action-mini-btn" style="width:26px; height:26px; box-shadow:none; background:transparent; color:var(--teal);" onclick="window.downloadCurrentViewAsZip()" title="Download View as Zip"><i class="fa-solid fa-file-zipper" style="font-size:16px;"></i></button>
+                            <button class="action-mini-btn" style="width:26px; height:26px; box-shadow:none; background:transparent; color:var(--text-main);" onclick="window.toggleSort()" title="Toggle Sort"><i class="fa-solid fa-arrow-down-a-z" id="sort-icon" style="font-size:16px;"></i></button>
+                        </div>
+                    </div>
+                </div>
+    
+    
+
+    <div id="emptyState" style="position:relative; inset:auto; padding:60px 0; background:transparent; display:flex; flex-direction:column; align-items:center;">
+              <i class="fa-solid fa-cloud-open" style="font-size:36px; opacity:0.3; margin-bottom: 8px;"></i>
+              <div>NO DOCUMENTS DETECTED</div>
+            </div>
+
+            <div id="storage-back-dropzone" class="folder-card" style="display:none; background:var(--bg-surface); color:var(--text-main); justify-content:center; border: 1px dashed var(--amber) !important; margin-bottom:16px; max-width:100%; width:100%; white-space:normal;">
+              <i class="fa-solid fa-arrow-left" style="color:var(--amber);"></i>
+              <div style="font-weight:600;">Drop here to move out of folder</div>
+            </div>
+
+            <div id="storage-folders-container" style="display:flex; flex-wrap:nowrap; overflow-x:auto; align-items:center; gap:8px; margin-bottom:12px; padding-bottom:4px; scrollbar-width:none;"></div>
+
+        <div id="filesGridContainer"></div>
+  </div>
+  
+</div>
+
+<div id="toast"></div>
+
+<div id="global-drop-overlay">
+  <i class="fa-solid fa-cloud-arrow-up" style="font-size: 72px;"></i>
+  <span>DROP TO UPLOAD TO CURRENT FOLDER</span>
+</div>
+
+<div id="multiSelectBar" style="flex-wrap: wrap; justify-content: center; max-width: 95vw; padding: 12px 16px; gap: 10px;">
+  <div style="font-size: 13px; font-weight: 600; color: var(--text-main); margin-right: 4px;"><span id="ms-count">0</span> Selected</div>
+    <button class="btn" style="padding: 8px 12px; background: var(--bg-base); gap: 6px;" onclick="window.msDownload()"><i class="fa-solid fa-download" style="color:var(--blue)"></i> DL</button>
+    <button class="btn" style="padding: 8px 12px; background: var(--bg-base); gap: 6px;" onclick="window.msDownloadZip()"><i class="fa-solid fa-file-zipper" style="color:var(--teal)"></i> Zip</button>
+    <button class="btn" style="padding: 8px 12px; background: var(--bg-base); gap: 6px;" onclick="window.msMove()"><i class="fa-solid fa-arrow-right-to-bracket" style="color:var(--amber)"></i> Move</button>
+    <button class="btn" style="padding: 8px 12px; background: var(--bg-base); gap: 6px;" onclick="window.msDelete()"><i class="fa-solid fa-trash" style="color:var(--red)"></i> Delete</button>
+    <button class="action-mini-btn" style="margin-left:4px;" onclick="window.clearMultiSelect()"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+
+<div id="fileContextMenu" class="modal-base" style="width: 250px; padding: 16px; gap: 8px; transition: opacity 0.1s;">
+  <div style="font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 4px;" id="file-cm-title">File Actions</div>
+  <button class="btn" style="padding: 10px; justify-content: flex-start; border-radius: 12px; gap: 12px;" onclick="window.fileCmDownload()"><i class="fa-solid fa-download" style="color:var(--blue)"></i> Download</button>
+  <button class="btn" style="padding: 10px; justify-content: flex-start; border-radius: 12px; gap: 12px;" onclick="window.fileCmRename()"><i class="fa-solid fa-pen" style="color:var(--teal)"></i> Rename</button>
+  <button class="btn" style="padding: 10px; justify-content: flex-start; border-radius: 12px; gap: 12px;" onclick="window.fileCmCopyLink()"><i class="fa-solid fa-link" style="color:var(--text-main)"></i> Copy Link</button>
+  <button class="btn" style="padding: 10px; justify-content: flex-start; border-radius: 12px; gap: 12px;" onclick="window.fileCmDelete()"><i class="fa-solid fa-trash" style="color:var(--red)"></i> Delete</button>
+    <button class="btn" style="padding: 10px; justify-content: flex-start; border-radius: 12px; gap: 12px;" onclick="window.fileCmMove()"><i class="fa-solid fa-arrow-right-to-bracket" style="color:var(--amber)"></i> Move To</button>
+    <button class="btn" style="padding: 10px; justify-content: flex-start; border-radius: 12px; gap: 12px; margin-top: 8px; background: var(--bg-base);" onclick="document.getElementById('fileContextMenu').classList.remove('open')"><i class="fa-solid fa-xmark"></i> Cancel</button>
+  </div>
+
+<div id="folderContextMenu" class="modal-base" style="width: 250px; padding: 16px; gap: 8px; transition: opacity 0.1s;">
+  <div style="font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 4px;" id="fcm-title">Folder Actions</div>
+    <button class="btn" style="padding: 10px; justify-content: flex-start; border-radius: 12px; gap: 12px;" onclick="window.fcmRename()"><i class="fa-solid fa-pen" style="color:var(--blue)"></i> Rename</button>
+    <button class="btn" style="padding: 10px; justify-content: flex-start; border-radius: 12px; gap: 12px;" onclick="window.fcmMove()"><i class="fa-solid fa-arrow-right-to-bracket" style="color:var(--amber)"></i> Move To</button>
+    <button id="fcm-download-btn" class="btn" style="padding: 10px; justify-content: flex-start; border-radius: 12px; gap: 12px;" onclick="window.fcmDownloadZip()"><i class="fa-solid fa-file-zipper" style="color:var(--teal)"></i> Download Zip</button>
+    <button class="btn" style="padding: 10px; justify-content: flex-start; border-radius: 12px; gap: 12px;" onclick="window.fcmDelete()"><i class="fa-solid fa-trash" style="color:var(--red)"></i> Delete</button>
+  <button class="btn" style="padding: 10px; justify-content: flex-start; border-radius: 12px; gap: 12px; margin-top: 8px; background: var(--bg-base);" onclick="document.getElementById('folderContextMenu').classList.remove('open')"><i class="fa-solid fa-xmark"></i> Cancel</button>
+</div>
+
+<div id="wallpaperModal" class="modal-base" style="top: 60px; left: auto; right: 20px; transform: none; margin: 0; width: 280px; padding: 16px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <h4 style="color:var(--text-main); font-size:16px; font-weight:600;">🎨 Backgrounds</h4>
+    <button class="action-mini-btn" style="box-shadow:none; background:transparent; width:28px; height:28px;" onclick="document.getElementById('wallpaperModal').classList.remove('open')"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div id="wallpaper-gallery" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; max-height:50vh; overflow-y:auto; padding-bottom:8px;"></div>
+  <button class="btn" style="padding:12px; background:var(--bg-surface); color:var(--text-main); font-weight:600; border: 1px dashed var(--amber) !important;" onclick="document.getElementById('bgUploadInput').click()">+ Add New Wallpaper</button>
+</div>
+
+<div id="renameModal" class="modal-base">
+  <h4 style="color:var(--text-main); margin-bottom:16px; font-size:16px; font-weight:600; padding-bottom:12px;">📁 Rename Cloud Asset</h4>
+  <div style="display:flex; flex-direction:column; gap:4px;">
+    <label style="font-size:11px; color:var(--amber); font-weight:600;">NEW FILE NAME</label>
+    <input type="text" id="renameValueInput" class="file-row-input" placeholder="document.pdf">
+  </div>
+  <input type="hidden" id="oldNameHidden">
+  <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:14px;">
+    <button class="btn" style="padding:8px 16px;" onclick="document.getElementById('renameModal').classList.remove('open')">✕ Cancel</button>
+    <button class="btn" style="color:var(--text-main); background:var(--bg-base); padding:8px 16px;" onclick="window.executeRename()">💾 Update Name</button>
+  </div>
+</div>
+
+<div id="fullNoteModal" style="display:none; position:fixed; z-index:40000; inset:0; align-items:center; justify-content:center; background:rgba(0,0,0,0.65); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); cursor:pointer;" onpointerdown="if(event.target === this) window.saveNoteModal()">
+  <div style="background:var(--bg-solid-surface); width:90vw; max-width:600px; border-radius:32px; padding:24px; box-shadow:0 24px 64px rgba(0,0,0,0.4); display:flex; flex-direction:column; gap:16px; border:none !important; cursor:default;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+           <input type="text" id="nm-title" style="flex:1; background:transparent; border:none; font-size:22px; font-weight:700; color:var(--text-main); outline:none; margin-right:12px;" placeholder="Note Title..." oninput="window.autoSaveNote()">
+           <div style="display:flex; gap:8px;">
+             <button class="action-mini-btn" onclick="window.toggleModalPin()" id="nm-pin-btn" title="Pin Note"><i class="fa-solid fa-thumbtack"></i></button>
+             <button class="action-mini-btn" onclick="window.copyModalNote()" title="Copy Text"><i class="fa-regular fa-copy"></i></button>
+           </div>
+        </div>
+        <div id="nm-gallery" style="display:none; flex-wrap:wrap; gap:8px; margin-bottom:12px;"></div>
+        <textarea id="nm-text" style="width:100%; min-height:250px; background:transparent; border:none; color:var(--text-main); font-family:inherit; font-size:15px; line-height:1.6; resize:vertical; outline:none;" placeholder="Start typing..." oninput="window.autoSaveNote()"></textarea>
+        <div id="nm-timestamp" style="font-size:11px; color:var(--text-muted); opacity:0.7; text-align:right; font-family:'JetBrains Mono', monospace; margin-top:4px;"></div>
+    <input type="hidden" id="nm-id"><input type="hidden" id="nm-color"><input type="hidden" id="nm-pinned">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:16px; border:none !important;">
+           <div style="display:flex; gap:12px;">
+                 <button class="action-mini-btn" onclick="window.cycleModalColor()" title="Change Color"><i class="fa-solid fa-palette"></i></button>
+                 <input type="file" id="modalAttachInput" style="display:none;" accept="image/*" onchange="window.triggerModalImageUpload(event)">
+                 <button class="action-mini-btn" onclick="document.getElementById('modalAttachInput').click()" title="Attach Image Asset"><i class="fa-solid fa-paperclip"></i></button>
+                                  <button class="action-mini-btn" onmousedown="event.preventDefault()" onclick="window.undoModalNote()" title="Undo Typo"><i class="fa-solid fa-rotate-left"></i></button>
+                                  <button class="action-mini-btn" style="color:var(--red);" onclick="window.deleteModalNote()" title="Delete Note"><i class="fa-solid fa-trash"></i></button>
+              </div>
+       <div style="display:flex; gap:12px;">
+                 <button class="btn" style="padding:10px 20px;" onclick="window.saveNoteModal()">Close</button>
+                 <button class="btn" style="padding:10px 20px; background:var(--amber); color:#000;" onclick="window.saveNoteModal()">Save Note</button>
+              </div>
+    </div>
+  </div>
+</div>
+
+<div id="mediaPreviewModal" style="display:none; position:fixed; z-index:60000; inset:0; align-items:center; justify-content:center; background:rgba(0,0,0,0.85); overflow:hidden;" onclick="this.style.display='none'; window.stopMedia && window.stopMedia();">
+  <img id="imagePreviewSrc" style="display:none; max-width:90vw; max-height:90vh; object-fit:contain; border-radius:24px; box-shadow:0 24px 64px rgba(0,0,0,0.5); transform-origin:center; transition:transform 0.1s ease-out; cursor:grab; background:#000000;" onclick="event.stopPropagation()" ondragstart="event.preventDefault()">
+  <iframe id="pdfPreviewSrc" style="display:none; width:90vw; height:90vh; border:none; border-radius:24px; box-shadow:0 24px 64px rgba(0,0,0,0.5); background:#ffffff;" onclick="event.stopPropagation()"></iframe>
+            <textarea id="textPreviewSrc" readonly style="display:none; width:90vw; height:90vh; border:none; border-radius:24px; box-shadow:0 24px 64px rgba(0,0,0,0.5); background:var(--bg-base); color:var(--text-main); padding:24px; font-family:'JetBrains Mono', monospace; font-size:13px; outline:none; resize:none;" onclick="event.stopPropagation()"></textarea>
+          
+              <div id="audioPreviewContainer" style="display:none; flex-direction:column; gap:16px; width:90vw; max-width:400px; z-index:60002;" onclick="event.stopPropagation()">
+      <canvas id="audioVisualizer" style="width:100%; height:120px; border-radius:24px; pointer-events:none; transform: translate3d(0,0,0); will-change: transform; backface-visibility: hidden;"></canvas>
+      <audio id="audioPreviewSrc" controls crossorigin="anonymous" style="width:100%; box-shadow:0 24px 64px rgba(0,0,0,0.5); border-radius:32px;"></audio>
+    </div>
+
+    <video id="videoPreviewSrc" controls style="display:none; max-width:90vw; max-height:90vh; border-radius:24px; box-shadow:0 24px 64px rgba(0,0,0,0.5); background:#000000;" onclick="event.stopPropagation()"></video>
+      <button style="position:absolute; top:24px; right:24px; background:var(--bg-surface); color:var(--text-main); border:none; width:40px; height:40px; border-radius:50%; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,0.3); z-index:60002;" onclick="document.getElementById('mediaPreviewModal').style.display='none'; window.stopMedia && window.stopMedia(); event.stopPropagation();"><i class="fa-solid fa-xmark"></i></button>
+
+      <div id="mediaControlsBar" style="display:none; position:absolute; bottom:32px; left:50%; transform:translateX(-50%); background:var(--bg-surface); padding:8px 16px; border-radius:32px; gap:16px; align-items:center; z-index:60005; box-shadow:0 12px 48px rgba(0,0,0,0.6); border: none !important;" onclick="event.stopPropagation()">
+         <button id="btn-zoom-in" class="action-mini-btn" style="box-shadow:none; width:36px; height:36px; color:var(--teal);" onclick="window.mediaZoom(0.5)"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+     <button id="btn-zoom-out" class="action-mini-btn" style="box-shadow:none; width:36px; height:36px; color:var(--amber);" onclick="window.mediaZoom(-0.5)"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+     <button id="btn-zoom-reset" class="action-mini-btn" style="box-shadow:none; width:36px; height:36px; color:var(--text-main);" onclick="window.mediaZoomReset()"><i class="fa-solid fa-expand"></i></button>
+     <button id="btn-fs-video" class="action-mini-btn" style="box-shadow:none; width:36px; height:36px; color:var(--blue); display:none;" onclick="window.mediaToggleFS()"><i class="fa-solid fa-expand"></i></button>
+  </div>
+</div>
+
+<div id="statusBar">
+  <span class="sb-item" id="sb-count">— files</span>
+  <span class="sb-sep">|</span>
+  <span class="sb-item" id="sb-storage">— MB utilized</span>
+  <span class="sb-sep">|</span>
+  <span class="sb-item">Bucket: docs</span>
+  <span class="sb-sep">|</span>
+  <span class="sb-item sb-ok" id="sb-status">ready</span>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://fxnrugbvbfyamtrfmjea.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_FnWYWD7C9Tvc1YNtVYQ1dA_aPwVsCmE';
+
+window.setWallpaper = async function(e) {
+  const files = Array.from(e.target.files);
+  if(!files.length) return;
+  e.target.value = ''; // reset input
+  
+  const file = files[0];
+  if (file) {
+      window.applyWallpaper(file);
+  }
+};
+
+window.openWallpaperModal = async function(event) {
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    
+    // Concurrency Lock: Prevents the "duplicate spam" if clicked multiple times
+    window._wpModalRenderId = (window._wpModalRenderId || 0) + 1;
+    const currentRenderId = window._wpModalRenderId;
+    
+    let activeWpName = null;
+    
+    try {
+        const { data: stateData } = await supabaseClient.from('user_data').select('state').eq('id', USER_DOC_ID).single();
+        activeWpName = (stateData && stateData.state && stateData.state.wallpaperName);
+    } catch(e) {}
+
+    if (currentRenderId !== window._wpModalRenderId) return; // Drop stale renders
+
+    const gal = document.getElementById('wallpaper-gallery');
+    gal.innerHTML = '<div style="grid-column: 1/-1; color: var(--text-muted); font-size: 11px; text-align: center;">Loading gallery...</div>';
+    
+    let allWallpapers = [];
+    try {
+        const { data } = await supabaseClient.storage.from(BUCKET_NAME).list('.system', { limit: 100 });
+        if (data) allWallpapers = data.filter(f => f.name.startsWith('wallpaper_'));
+    } catch(e) {}
+    
+    if (currentRenderId !== window._wpModalRenderId) return;
+    gal.innerHTML = '';
+
+    let clearBtn = document.createElement('div');
+    clearBtn.style.cssText = `height:80px; border-radius:16px; background:var(--bg-surface); border:2px dashed var(--text-muted); display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text-muted); transition:transform 0.2s; ${!activeWpName ? 'border-color:var(--amber); color:var(--amber);' : ''}`;
+    clearBtn.innerHTML = '<i class="fa-solid fa-ban" style="font-size:24px;"></i>';
+    clearBtn.onclick = () => window.applyWallpaper(null);
+    clearBtn.onmouseover = () => clearBtn.style.transform = 'scale(1.05)';
+    clearBtn.onmouseout = () => clearBtn.style.transform = 'scale(1)';
+    gal.appendChild(clearBtn);
+
+    // Render ALL saved wallpapers from storage
+    allWallpapers.forEach(wp => {
+        const fullPath = `.system/${wp.name}`;
+        const { data: urlData } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(fullPath);
+        const isActive = (activeWpName === fullPath);
+        
+        let w = document.createElement('div');
+        w.style.cssText = `position:relative; height:80px; border-radius:16px; overflow:hidden; background:var(--bg-base); cursor:pointer; border:none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); transition: transform 0.2s; ${isActive ? 'outline: 2px solid var(--amber);' : ''}`;
+        w.onclick = () => window.applyWallpaper(urlData.publicUrl, fullPath);
+        w.innerHTML = `
+           <img src="${urlData.publicUrl}" style="width:100%;height:100%;object-fit:cover;object-position:center;">
+           ${isActive ? `<div style="position:absolute;inset:0;background:rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;pointer-events:none;"><i class="fa-solid fa-circle-check" style="color:var(--amber);font-size:24px;background:#000;border-radius:50%;"></i></div>` : ''}
+           <button onclick="window.deleteWallpaperFile(event, '${wp.name}', '${isActive}')" style="position:absolute; top:4px; right:4px; background:rgba(0,0,0,0.6); color:#fff; border:none; border-radius:50%; width:24px; height:24px; font-size:11px; cursor:pointer; display:flex; align-items:center; justify-content:center;"><i class="fa-solid fa-trash"></i></button>
+        `;
+        gal.appendChild(w);
+    });
+    
+    document.getElementById('wallpaperModal').classList.add('open');
+};
+
+window.deleteWallpaperFile = async function(event, filename, wasActive) {
+    event.stopPropagation();
+    if(!confirm('Permanently delete this wallpaper?')) return;
+    
+    if(wasActive === 'true') window.applyWallpaper(null);
+    
+    try {
+        await supabaseClient.storage.from(BUCKET_NAME).remove([`.system/${filename}`]);
+        window.openWallpaperModal(); // Reload the gallery immediately
+        toast('Wallpaper deleted', 'ok');
+    } catch(e) {
+        toast('Failed to delete file', 'err');
+    }
+};
+
+window.applyWallpaper = async function(source, existingName = null) {
+    const overlay = document.getElementById('bgOverlay');
+    const modal = document.getElementById('wallpaperModal');
+    
+    if (!source) {
+        overlay.style.backgroundImage = 'none';
+        document.documentElement.classList.remove('has-wallpaper');
+        localStorage.removeItem('sovereign_wp_url');
+        modal.classList.remove('open'); // Close Modal Instantly
+
+        try {
+            const { data, error } = await supabaseClient.from('user_data').select('state').eq('id', USER_DOC_ID).single();
+            if (error && error.code !== 'PGRST116') throw error;
+            const latestState = (data && data.state) || {};
+            await supabaseClient.from('user_data').upsert({ id: USER_DOC_ID, state: { ...latestState, wallpaperName: null } });
+        } catch(e) { console.error("Wallpaper sync error:", e); }
+        return;
+    }
+    
+    // If it's a File object (brand new upload directly from OS file picker)
+    if (source instanceof File) {
+        modal.classList.remove('open'); // Close immediately so user isn't stuck
+        toast(`Starting Upload... 0%`, 'info', 10000);
+        showProgress(5);
+        
+        const localUrl = URL.createObjectURL(source);
+        overlay.style.backgroundImage = `url(${localUrl})`;
+        document.documentElement.classList.add('has-wallpaper');
+        
+        try {
+            const cleanName = source.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const uniqueName = `.system/wallpaper_${Date.now()}_${cleanName}`;
+            
+            // Native XHR connection to wire up the system wide upload progress bar seamlessly
+            await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', `${SUPABASE_URL}/storage/v1/object/${BUCKET_NAME}/${uniqueName}`, true);
+                xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
+                xhr.setRequestHeader('Authorization', `Bearer ${SUPABASE_ANON_KEY}`);
+                xhr.setRequestHeader('Content-Type', source.type || 'application/octet-stream');
+                
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        const pct = Math.round((e.loaded / e.total) * 100);
+                        showProgress(pct);
+                        toast(`Uploading Background... ${pct}%`, 'info', 10000); // Forces progress into the middle of the screen
+                    }
+                };
+                
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) resolve();
+                    else reject(xhr.responseText);
+                };
+                xhr.onerror = () => reject('Network connection broken');
+                xhr.send(source);
+            });
+            
+            hideProgress();
+            
+            const { data, error } = await supabaseClient.from('user_data').select('state').eq('id', USER_DOC_ID).single();
+            if (error && error.code !== 'PGRST116') throw error;
+            const latestState = (data && data.state) || {};
+            
+            await supabaseClient.from('user_data').upsert({ id: USER_DOC_ID, state: { ...latestState, wallpaperName: uniqueName } });
+            
+            toast('Wallpaper live and synced!', 'ok');
+        } catch (e) {
+            hideProgress();
+            console.error("Wallpaper Upload Error:", e);
+            toast("Upload synchronization failed", "err");
+        }
+        return;
+    }
+    
+    // If it's a string URL (selected via built-in grid gallery click)
+        if (typeof source === 'string') {
+            overlay.style.setProperty('background-image', `url("${source}")`, 'important');
+            document.documentElement.classList.add('has-wallpaper');
+            localStorage.setItem('sovereign_wp_url', source);
+            modal.classList.remove('open'); // Close Modal Instantly
+            toast('Wallpaper applied!', 'ok');
+        
+            if (existingName) {
+                try {
+                    const { data, error } = await supabaseClient.from('user_data').select('state').eq('id', USER_DOC_ID).single();
+                    if (error && error.code !== 'PGRST116') throw error;
+                    const latestState = (data && data.state) || {};
+                    await supabaseClient.from('user_data').upsert({ id: USER_DOC_ID, state: { ...latestState, wallpaperName: existingName } });
+                } catch(e) { console.error("Wallpaper string sync error:", e); }
+            }
+        }
+};
+
+window.removeSavedWallpaper = function(event, idx) {
+    event.stopPropagation();
+    window.applyWallpaper(null);
+};
+
+window.syncCloudWallpaper = async function(overrideWpName = undefined) {
+    if (typeof supabaseClient === 'undefined' || typeof BUCKET_NAME === 'undefined') return;
+    try {
+        let wpName = overrideWpName;
+        if (wpName === undefined) {
+                        const { data, error } = await window.getCloudState();
+                        if (error && error.code !== 'PGRST116') throw error;
+                        wpName = data && data.state && data.state.wallpaperName;
+                    }
+
+        if (wpName) {
+                    const { data: urlData } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(wpName);
+                    if (urlData && urlData.publicUrl) {
+                        document.getElementById('bgOverlay').style.setProperty('background-image', `url("${urlData.publicUrl}")`, 'important');
+                        document.documentElement.classList.add('has-wallpaper');
+                        localStorage.setItem('sovereign_wp_url', urlData.publicUrl);
+                    }
+                } else {
+                    document.getElementById('bgOverlay').style.setProperty('background-image', 'none', 'important');
+                    document.documentElement.classList.remove('has-wallpaper');
+                    localStorage.removeItem('sovereign_wp_url');
+                }
+    } catch(e) { console.error("Could not fetch cloud wallpaper:", e); }
+};
+
+
+const BUCKET_NAME = 'docs';
+const USER_DOC_ID = 'global_user_1';
+
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+window._cachedStatePromise = null;
+window.getCloudState = function() {
+    // If a request is already in flight, share it. If not, make a new one.
+    if (!window._cachedStatePromise) {
+        window._cachedStatePromise = supabaseClient.from('user_data').select('state').eq('id', USER_DOC_ID).single();
+        // Clear the cache after 2.5 seconds so future user actions get fresh data
+        setTimeout(() => { window._cachedStatePromise = null; }, 2500);
+    }
+    return window._cachedStatePromise;
+};
+
+var $progress = document.getElementById('progressBar');
+var $toast = document.getElementById('toast');
+let S = { notes: [], folders: [] };
+window.currentFolderView = null;
+window.selectedFiles = new Set();
+window.currentSort = 'date';
+window.isFormatFilterMode = false;
+window.activeFormatType = null;
+
+window.fileCategories = {
+    'Images': { icon: 'fa-solid fa-image', color: 'var(--teal)', exts: ['png','jpg','jpeg','gif','webp','svg'] },
+    'Videos': { icon: 'fa-solid fa-film', color: 'var(--red)', exts: ['mp4','webm','mov'] },
+    'Audio': { icon: 'fa-solid fa-music', color: 'var(--green)', exts: ['mp3','wav','ogg','m4a'] },
+    'Codes': { icon: 'fa-solid fa-code', color: 'var(--amber)', exts: ['html','css','js','ts','jsx','tsx','py','java','c','cpp','cs','php','json','xml','sql','sh','bat','go','rs','rb','swift'] },
+    'Documents': { icon: 'fa-solid fa-file-lines', color: 'var(--blue)', exts: ['pdf','doc','docx','xls','xlsx','ppt','pptx','txt','rtf','csv','md'] },
+    'Apps': { icon: 'fa-brands fa-android', color: 'var(--green)', exts: ['apk'] },
+    'Archives': { icon: 'fa-solid fa-box-archive', color: 'var(--amber)', exts: ['zip','rar','tar','gz','exe','deb','msi'] },
+    'Others': { icon: 'fa-solid fa-file', color: 'var(--text-muted)', exts: [] }
+};
+
+window.parseMarkdown = function(text, noteId, alreadyEscaped) {
+    if (!text) return '';
+    let html = alreadyEscaped ? String(text) : String(text).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    html = html.replace(/```([\s\S]*?)```/g, '<pre>$1</pre>');
+    html = html.replace(/`(.*?)`/g, '<code>$1</code>');
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    let taskIndex = 0;
+    html = html.replace(/-\s\[([xX ])\]\s(.*?)(\n|$)/g, (match, state, label, newline) => {
+        let isChecked = state.toLowerCase() === 'x';
+        let chk = `<input type="checkbox" ${isChecked ? 'checked' : ''} onchange="window.toggleTaskState('${noteId}', ${taskIndex}, this.checked)" onclick="event.stopPropagation()" style="margin-right:8px; cursor:pointer; accent-color:var(--amber);">`;
+        let txt = `<span style="${isChecked ? 'text-decoration:line-through;opacity:0.5;' : ''}">${label}</span>`;
+        taskIndex++;
+        return `<div style="display:flex;align-items:center;margin:2px 0;">${chk}${txt}</div>` + newline;
+    });
+    return `<div class="md-preview" style="white-space:pre-wrap; word-break:break-word;">${html}</div>`;
+};
+
+window.toggleTaskState = function(noteId, targetIndex, isChecked) {
+    let n = S.notes.find(x => x.id === noteId);
+    if (!n) return;
+    let currIndex = 0;
+    n.text = n.text.replace(/-\s\[([xX ])\]\s/g, (match) => {
+        if (currIndex === targetIndex) {
+            currIndex++;
+            return isChecked ? '- [x] ' : '- [ ] ';
+        }
+        currIndex++;
+        return match;
+    });
+    window.saveNotesData();
+    window.renderNotes();
+    let nmId = document.getElementById('nm-id');
+    if (nmId && nmId.value === noteId) document.getElementById('nm-text').value = n.text;
+};
+
+const noteColors = [
+  'var(--note-base)',
+  'var(--note-amber)',
+  'var(--note-blue)',
+  'var(--note-green)',
+  'var(--note-red)',
+  'var(--note-purple)'
+];
+
+window.getUpgradedColor = function(c) {
+    if (!c) return 'var(--note-base)';
+    if (c.includes('var(--note-')) return c; 
+    if (c.includes('227') && c.includes('179') && c.includes('65')) return 'var(--note-amber)';
+    if (c.includes('92') && c.includes('157') && c.includes('255')) return 'var(--note-blue)';
+    if (c.includes('57') && c.includes('211') && c.includes('83')) return 'var(--note-green)';
+    if (c.includes('248') && c.includes('81') && c.includes('73')) return 'var(--note-red)';
+    if (c.includes('188') && c.includes('140') && c.includes('255')) return 'var(--note-purple)';
+    return 'var(--note-base)';
+};
+
+function showProgress(pct) {
+  $progress.style.width = pct + '%';
+  $progress.classList.add('active');
+}
+function hideProgress() {
+  $progress.style.width = '100%';
+  setTimeout(function() { $progress.classList.remove('active'); $progress.style.width = '0%'; }, 150);
+}
+
+var toastTimer;
+function toast(msg, type, duration) {
+  type = type || 'ok';
+  duration = duration || 2500;
+  clearTimeout(toastTimer);
+  $toast.textContent = msg;
+  $toast.className = 'show' + (type === 'warn' ? ' warn' : type === 'err' ? ' err' : type === 'info' ? ' info' : '');
+  toastTimer = setTimeout(function() { $toast.className = ''; }, duration);
+}
+
+function formatBytes(bytes, decimals = 2) {
+    if (!+bytes) return '0 Bytes';
+    const k = 1024; const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}
+
+window.previewImage = function(event, url) {
+    if (event) event.stopPropagation();
+    window.stopMedia();
+    document.getElementById('pdfPreviewSrc').style.display = 'none';
+    const tP = document.getElementById('textPreviewSrc'); if(tP) tP.style.display='none';
+    const aC = document.getElementById('audioPreviewContainer'); if(aC) aC.style.display='none';
+    document.getElementById('videoPreviewSrc').style.display = 'none';
+
+    let mb = document.getElementById('mediaControlsBar');
+    if(mb) {
+        mb.style.display = 'flex';
+        document.getElementById('btn-zoom-in').style.display = 'flex';
+        document.getElementById('btn-zoom-out').style.display = 'flex';
+        document.getElementById('btn-zoom-reset').style.display = 'flex';
+        document.getElementById('btn-fs-video').style.display = 'none';
+    }
+
+    const img = document.getElementById('imagePreviewSrc');
+    img.src = url;
+    img.style.display = 'block';
+    if(typeof window.mediaZoomReset === 'function') window.mediaZoomReset();
+
+    document.getElementById('mediaPreviewModal').style.display = 'flex';
+};
+
+window.toggleTheme = async function() {
+    document.documentElement.classList.toggle('light-theme');
+    const isLight = document.documentElement.classList.contains('light-theme');
+    const themeVal = isLight ? 'light' : 'dark';
+    try {
+        const { data, error: fetchErr } = await supabaseClient.from('user_data').select('state').eq('id', USER_DOC_ID).single();
+        if (fetchErr && fetchErr.code !== 'PGRST116') throw fetchErr;
+        const prevState = (data && data.state) || {};
+        const { error: upsertErr } = await supabaseClient.from('user_data').upsert({ id: USER_DOC_ID, state: { ...prevState, theme: themeVal } });
+        if (upsertErr) { console.error("Theme cloud save error:", upsertErr); toast('Failed to sync theme', 'err'); }
+    } catch(e) { console.error("Theme sync exception:", e); toast('Theme sync aborted due to state fetch failure', 'err'); }
+};
+
+window.checkStorage = function() {
+    const storageUsage = document.getElementById('sb-storage').textContent;
+    toast(`Cloud Storage: ${storageUsage}`, 'info', 3000);
+};
+
+window.syncCloudTheme = async function() {
+    if (typeof supabaseClient === 'undefined') return;
+    try {
+        const { data, error } = await window.getCloudState();
+        if (error && error.code !== 'PGRST116') { console.error("Theme fetch error:", error); return; }
+        
+        const stateData = (data && data.state) || {};
+        if (stateData.theme) {
+            document.documentElement.classList.toggle('light-theme', stateData.theme === 'light');
+        }
+        
+        // Setup Full Realtime Sync across instances
+        window._lastWpName = stateData.wallpaperName;
+        
+        supabaseClient.channel('system-sync-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'user_data', filter: `id=eq.${USER_DOC_ID}` }, payload => {
+                const s = payload.new && payload.new.state;
+                if (s) {
+                    // Instant Theme Sync
+                    if (s.theme) {
+                        document.documentElement.classList.toggle('light-theme', s.theme === 'light');
+                    }
+                    
+                    // Instant Wallpaper Sync
+                    if (s.wallpaperName !== window._lastWpName) {
+                        window._lastWpName = s.wallpaperName;
+                        window.syncCloudWallpaper(s.wallpaperName || null);
+                    }
+                }
+            })
+            .subscribe();
+            
+    } catch(e) { console.error("Could not init cloud theme:", e); }
+};
+
+window.stopMedia = function() {
+    const a = document.getElementById('audioPreviewSrc'); if(a) { a.pause(); a.src=''; }
+    const v = document.getElementById('videoPreviewSrc'); if(v) { v.pause(); v.src=''; }
+    document.getElementById('pdfPreviewSrc').src='';
+    const t = document.getElementById('textPreviewSrc'); if(t) { t.value=''; t.style.display='none'; }
+    const aC = document.getElementById('audioPreviewContainer'); if(aC) aC.style.display='none';
+};
+
+window.previewUniversal = function(event, url, ext) {
+    if (event) event.stopPropagation();
+    
+    const imgExt = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
+    if (imgExt.includes(ext.toLowerCase())) {
+        window.previewImage(event, url);
+        return;
+    }
+
+    window.stopMedia();
+        document.getElementById('imagePreviewSrc').style.display = 'none';
+        document.getElementById('pdfPreviewSrc').style.display = 'none';
+        const aC = document.getElementById('audioPreviewContainer'); if(aC) aC.style.display='none';
+        document.getElementById('videoPreviewSrc').style.display = 'none';
+    
+    const gDocs = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'rtf'];
+    const webExt = ['html', 'htm'];
+    const audioExt = ['mp3', 'wav', 'ogg', 'm4a'];
+    const videoExt = ['mp4', 'webm', 'mov'];
+
+    let mb = document.getElementById('mediaControlsBar');
+        if(mb) mb.style.display = 'none';
+
+        if (audioExt.includes(ext)) {
+                    document.getElementById('audioPreviewContainer').style.display = 'flex';
+                    const a = document.getElementById('audioPreviewSrc');
+                    a.src = url; a.play();
+                    if(!window.audioCtx) window.initAudioVisualizer();
+                    else window.audioCtx.resume();
+                } else if (videoExt.includes(ext)) {
+            const v = document.getElementById('videoPreviewSrc');
+            v.style.display = 'block'; v.src = url; v.play();
+            if(mb) {
+                mb.style.display = 'flex';
+                document.getElementById('btn-zoom-in').style.display = 'none';
+                document.getElementById('btn-zoom-out').style.display = 'none';
+                document.getElementById('btn-zoom-reset').style.display = 'none';
+                document.getElementById('btn-fs-video').style.display = 'flex';
+            }
+        } else if (webExt.includes(ext)) {
+                const i = document.getElementById('pdfPreviewSrc');
+                i.style.display = 'block';
+                i.src = url;
+            } else if (gDocs.includes(ext)) {
+                const i = document.getElementById('pdfPreviewSrc');
+                i.style.display = 'block';
+                i.src = 'https://docs.google.com/gview?embedded=true&url=' + encodeURIComponent(url);
+            } else {
+                const i = document.getElementById('pdfPreviewSrc');
+                i.style.display = 'block';
+                i.src = url;
+            }
+    
+    document.getElementById('mediaPreviewModal').style.display = 'flex';
+    };
+
+    window.audioCtx = null;
+    window.initAudioVisualizer = function() {
+        const audio = document.getElementById('audioPreviewSrc');
+        const canvas = document.getElementById('audioVisualizer');
+        const ctx = canvas.getContext('2d');
+    
+        window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = window.audioCtx.createAnalyser();
+        const source = window.audioCtx.createMediaElementSource(audio);
+    
+        source.connect(analyser);
+        analyser.connect(window.audioCtx.destination);
+    
+        analyser.fftSize = 128;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+    
+        function renderFrame() {
+                    const container = document.getElementById('audioPreviewContainer');
+                    if(container && container.style.display === 'none') { window._audioRafId = null; return; }
+                    window._audioRafId = requestAnimationFrame(renderFrame);
+        
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        
+            analyser.getByteFrequencyData(dataArray);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+            const barWidth = (canvas.width / bufferLength) * 2.5;
+            let x = 0;
+        
+            for (let i = 0; i < bufferLength; i++) {
+                let barHeight = (dataArray[i] / 255) * canvas.height;
+                // Themed gradient rendering (Teal -> Blue)
+                let r = 45 + (dataArray[i]/255)*47;
+                let g = 212 - (dataArray[i]/255)*55;
+                let b = 191 + (dataArray[i]/255)*64;
+            
+                ctx.fillStyle = `rgb(${r},${g},${b})`;
+                ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
+                x += barWidth;
+            }
+        }
+        renderFrame();
+    };
+
+    window.saveNotesData = async function() {
+                let prevState = {};
+                try {
+                    const { data, error } = await supabaseClient.from('user_data').select('state').eq('id', USER_DOC_ID).single();
+                    if (error && error.code !== 'PGRST116') throw error;
+                    prevState = (data && data.state) || {};
+                } catch(e) {
+                    console.error("Cloud fetch error:", e);
+                    return toast("Cloud state fetch failed, aborting save to prevent data wipe", "err");
+                }
+                // Merge the entire existing state (including wallpaperName) so it isn't erased
+                const { error: upsertErr } = await supabaseClient.from('user_data').upsert({ id: USER_DOC_ID, state: { ...prevState, notes: S.notes, folders: S.folders } });
+                if (upsertErr) { console.error("Cloud save error:", upsertErr); toast("Failed to sync note data", "err"); }
+            };
+
+window.loadNotesData = async function() {
+    const { data, error } = await window.getCloudState();
+    if (error && error.code !== 'PGRST116') { console.error("Fetch notes error:", error); } 
+    else if (data && data.state) {
+        S.notes = data.state.notes || [];
+        S.folders = data.state.folders || [];
+        if (data.state.theme) {
+            const isLight = data.state.theme === 'light';
+            document.documentElement.classList.toggle('light-theme', isLight);
+            localStorage.setItem('sovereign_theme', data.state.theme);
+        }
+    }
+    window.renderNotes();
+};
+
+window.sanitizeNoteText = function(str) {
+    if (!str) return str;
+    return str.replace(/[\u200B-\u200F\uFEFF\u202A-\u202E]/g, '');
+};
+
+window.quickAddNote = async function() {
+    const input = document.getElementById('quick-note-input');
+    const text = window.sanitizeNoteText(input.value.trim());
+    if (!text) return;
+    
+    const newNote = {
+        id: 'n_' + Date.now(),
+        text: text, title: '', color: noteColors[0],
+        pinned: false, folderId: window.currentFolderView,
+        images: [],
+        createdAt: Date.now(), updatedAt: Date.now(), order: Date.now()
+    };
+    S.notes.push(newNote);
+    input.value = '';
+    await window.saveNotesData(); window.renderNotes();
+    toast('Note captured!', 'ok');
+};
+
+window.attachImageToNote = async function(event) {
+    try {
+        const file = event.target.files[0];
+        if(!file) return;
+        event.target.value = '';
+        showProgress(20); toast('Uploading image...', 'info');
+        
+        const uniqueName = `note_img_${Date.now()}_${file.name}`;
+        const { error } = await supabaseClient.storage.from(BUCKET_NAME).upload(uniqueName, file);
+        if(error) { hideProgress(); return toast('Upload failed: ' + error.message, 'err'); }
+        
+        const { data: urlData } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(uniqueName);
+        const input = document.getElementById('quick-note-input');
+        const text = input.value.trim();
+        
+        const newNote = {
+            id: 'n_' + Date.now(),
+            text: text, title: '', color: noteColors[0],
+            pinned: false, folderId: window.currentFolderView,
+            images: [urlData.publicUrl],
+            createdAt: Date.now(), updatedAt: Date.now(), order: Date.now()
+        };
+        S.notes.push(newNote);
+        input.value = '';
+        await window.saveNotesData(); window.renderNotes();
+        window.loadFiles(); 
+        hideProgress(); toast('Note with image created!', 'ok');
+    } catch (err) {
+        hideProgress();
+        toast('Upload exception', 'err');
+    }
+};
+
+window.createNewFolder = function() {
+    let folderName = prompt('Enter folder name:');
+    if (!folderName || !folderName.trim()) return;
+    folderName = folderName.trim();
+    S.folders.push({id: 'f_'+Date.now(), name: folderName, createdAt: Date.now()});
+    window.saveNotesData(); window.renderNotes(); toast('Folder created', 'ok');
+};
+
+window.viewRootFolder = function() {
+    window.currentFolderView = null;
+    document.getElementById('btn-back-folder').style.display = 'none';
+    document.getElementById('notes-view-title').style.display = 'flex';
+    document.getElementById('notes-view-title').innerHTML = '<i class="fa-regular fa-note-sticky" style="font-size:20px; color:var(--text-main);"></i>';
+    document.getElementById('notes-folder-edit').style.display = 'none';
+    window.renderNotes();
+};
+
+window.viewFolder = function(id, name, event) {
+    if(event) event.stopPropagation();
+    window.currentFolderView = id;
+    document.getElementById('btn-back-folder').style.display = 'flex';
+    document.getElementById('notes-view-title').style.display = 'none';
+    var editInp = document.getElementById('notes-folder-edit');
+    editInp.style.display = 'block';
+    editInp.value = name || 'UNNAMED';
+    window.renderNotes();
+};
+
+window.renameCurrentFolder = function(val) {
+    if(window.currentFolderView) {
+        var f = S.folders.find(x => x.id === window.currentFolderView);
+        if(f) { f.name = val; window.saveNotesData(); window.renderNotes(); }
+    }
+};
+
+window.deleteFolder = async function(id, event) {
+    if(event) event.stopPropagation();
+    if(!confirm('Delete folder and all notes inside?')) return;
+    
+    let notesInFolder = S.notes.filter(n => n.folderId === id);
+    for (let n of notesInFolder) {
+        let imgs = n.images || (n.imageUrl ? [n.imageUrl] : []);
+        for (let src of imgs) {
+            if (src && src.includes('/storage/v1/object/public/docs/')) {
+                let parts = src.split('/storage/v1/object/public/docs/');
+                if (parts.length > 1) {
+                    let storageName = decodeURIComponent(parts[1]);
+                    await supabaseClient.storage.from(BUCKET_NAME).remove([storageName]);
+                }
+            }
+        }
+    }
+
+    S.folders = S.folders.filter(f => f.id !== id);
+    S.notes = S.notes.filter(n => n.folderId !== id);
+    if(window.currentFolderView === id) window.viewRootFolder(); else window.renderNotes();
+    await window.saveNotesData();
+    window.loadFiles(); 
+};
+
+window.openNoteModal = function(id) {
+    const n = S.notes.find(x => x.id === id);
+    if(!n) return;
+    document.getElementById('nm-id').value = n.id;
+    document.getElementById('nm-title').value = n.title || '';
+    document.getElementById('nm-text').value = n.text || '';
+    
+    window._initialNoteState = { title: n.title || '', text: n.text || '', color: n.color };
+    
+    let upgradedColor = window.getUpgradedColor(n.color);
+    document.getElementById('nm-color').value = upgradedColor;
+    document.getElementById('nm-pinned').value = n.pinned ? 'true' : 'false';
+    
+    let dt = new Date(n.updatedAt || Date.now());
+    document.getElementById('nm-timestamp').innerText = `Last saved: ${dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} at ${dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+    
+    const modalWrapper = document.getElementById('fullNoteModal').firstElementChild;
+                if (modalWrapper) {
+                    if (upgradedColor === 'var(--note-base)') {
+                        modalWrapper.style.background = 'var(--bg-solid-surface)';
+                    } else {
+                        modalWrapper.style.background = `linear-gradient(${upgradedColor}, ${upgradedColor}), var(--bg-solid-surface)`;
+                    }
+        
+                }
+
+    const gal = document.getElementById('nm-gallery');
+    gal.innerHTML = '';
+    let imgs = n.images || (n.imageUrl ? [n.imageUrl] : []);
+    if(imgs.length > 0) {
+        imgs.forEach((src, idx) => {
+                            let w = document.createElement('div');
+                            w.style.cssText = "position:relative; width:80px; height:80px; border-radius:16px; overflow:hidden; background:var(--bg-base); border: none !important;";
+                            w.innerHTML = `
+                       <img src="${src}" style="width:100%;height:100%;object-fit:cover;cursor:pointer;" onclick="window.previewImage(event, '${src}')" title="Preview">
+               <button onclick="window.removeModalImage(event, ${idx})" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,0.3);"><i class="fa-solid fa-xmark"></i></button>
+            `;
+            gal.appendChild(w);
+        });
+        gal.style.display = 'flex';
+    } else {
+        gal.style.display = 'none';
+    }
+    
+    document.getElementById('nm-pin-btn').style.color = n.pinned ? 'var(--amber)' : 'var(--text-main)';
+    document.getElementById('fullNoteModal').style.display = 'flex';
+};
+
+window.removeModalImage = async function(event, idx) {
+    event.stopPropagation();
+    const id = document.getElementById('nm-id').value;
+    const n = S.notes.find(x => x.id === id);
+    if (n) {
+        let imgs = n.images || (n.imageUrl ? [n.imageUrl] : []);
+        let removedSrc = imgs[idx];
+        imgs.splice(idx, 1);
+        n.images = imgs;
+        if(imgs.length === 0) n.imageUrl = null; 
+        
+        await window.saveNotesData();
+        window.openNoteModal(id); 
+
+        if (removedSrc && removedSrc.includes('/storage/v1/object/public/docs/')) {
+            let parts = removedSrc.split('/storage/v1/object/public/docs/');
+            if (parts.length > 1) {
+                let storageName = decodeURIComponent(parts[1]);
+                await supabaseClient.storage.from(BUCKET_NAME).remove([storageName]);
+            }
+        }
+        window.loadFiles(); 
+    }
+};
+
+window.saveNoteModal = function() {
+    const id = document.getElementById('nm-id').value;
+    const n = S.notes.find(x => x.id === id);
+    if(n) {
+        let newTitle = window.sanitizeNoteText(document.getElementById('nm-title').value.trim());
+        let newText = window.sanitizeNoteText(document.getElementById('nm-text').value.trim());
+        let newColor = document.getElementById('nm-color').value;
+        let newPinned = document.getElementById('nm-pinned').value === 'true';
+
+        if ((n.title || '') !== newTitle || (n.text || '') !== newText || window.getUpgradedColor(n.color) !== newColor || (!!n.pinned) !== newPinned) {
+            n.title = newTitle;
+            n.text = newText;
+            n.color = newColor;
+            n.pinned = newPinned;
+            n.updatedAt = Date.now();
+            window.saveNotesData(); window.renderNotes();
+        }
+    }
+    document.getElementById('fullNoteModal').style.display = 'none';
+};
+
+window.autoSaveNote = function() {
+    const id = document.getElementById('nm-id').value;
+    const n = S.notes.find(x => x.id === id);
+    if(n) {
+        let newTitle = window.sanitizeNoteText(document.getElementById('nm-title').value.trim());
+        let newText = window.sanitizeNoteText(document.getElementById('nm-text').value.trim());
+        let newColor = document.getElementById('nm-color').value;
+        let newPinned = document.getElementById('nm-pinned').value === 'true';
+        
+        if ((n.title || '') === newTitle && (n.text || '') === newText && window.getUpgradedColor(n.color) === newColor && (!!n.pinned) === newPinned) return;
+        
+        n.title = newTitle;
+        n.text = newText;
+        n.color = newColor;
+        n.pinned = newPinned;
+        n.updatedAt = Date.now();
+        
+        clearTimeout(window._autoSaveTimer);
+        window._autoSaveTimer = setTimeout(() => {
+            window.saveNotesData();
+            window.renderNotes();
+        }, 1000);
+    }
+};
+
+window.undoModalNote = function() {
+    let ta = document.getElementById('nm-text');
+    ta.focus();
+    
+    // Try to perform a true sequential native undo (like Ctrl+Z)
+    let success = document.execCommand('undo');
+    
+    if (success) {
+        window.autoSaveNote();
+        return;
+    }
+    
+    // Fallback: If native undo history is empty, reset to when note was opened
+    if (!window._initialNoteState) return;
+    
+    document.getElementById('nm-title').value = window._initialNoteState.title;
+    document.getElementById('nm-text').value = window._initialNoteState.text;
+    
+    let initialColor = window.getUpgradedColor(window._initialNoteState.color);
+    document.getElementById('nm-color').value = initialColor;
+    
+    const modalWrapper = document.getElementById('fullNoteModal').firstElementChild;
+    if (modalWrapper) {
+        if (initialColor === 'var(--note-base)') {
+            modalWrapper.style.background = 'var(--bg-solid-surface)';
+        } else {
+            modalWrapper.style.background = `linear-gradient(${initialColor}, ${initialColor}), var(--bg-solid-surface)`;
+        }
+    }
+    
+    window.autoSaveNote();
+    toast('Reverted to original state', 'info');
+};
+
+window.deleteModalNote = async function() {
+    if(!confirm('Delete this note?')) return;
+    const id = document.getElementById('nm-id').value;
+    const n = S.notes.find(x => x.id === id);
+    if (n) {
+        let imgs = n.images || (n.imageUrl ? [n.imageUrl] : []);
+        for (let src of imgs) {
+            if (src && src.includes('/storage/v1/object/public/docs/')) {
+                let parts = src.split('/storage/v1/object/public/docs/');
+                if (parts.length > 1) {
+                    let storageName = decodeURIComponent(parts[1]);
+                    await supabaseClient.storage.from(BUCKET_NAME).remove([storageName]);
+                }
+            }
+        }
+    }
+    S.notes = S.notes.filter(n => n.id !== id);
+    await window.saveNotesData(); window.renderNotes();
+    document.getElementById('fullNoteModal').style.display = 'none';
+    window.loadFiles(); 
+    toast('Note deleted', 'ok');
+};
+
+window.toggleModalPin = function() {
+    const pinInp = document.getElementById('nm-pinned');
+    const isPinned = pinInp.value === 'true';
+    pinInp.value = isPinned ? 'false' : 'true';
+    document.getElementById('nm-pin-btn').style.color = !isPinned ? 'var(--amber)' : 'var(--text-main)';
+    if(typeof window.autoSaveNote === 'function') window.autoSaveNote();
+};
+
+window.cycleModalColor = function() {
+    let cur = document.getElementById('nm-color').value;
+    let idx = noteColors.indexOf(cur);
+    if(idx === -1) idx = 0;
+    let nextIdx = (idx + 1) % noteColors.length;
+    let nextColor = noteColors[nextIdx];
+    document.getElementById('nm-color').value = nextColor;
+    
+    const modalWrapper = document.getElementById('fullNoteModal').firstElementChild;
+            if (modalWrapper) {
+                if (nextColor === 'var(--note-base)') {
+                    modalWrapper.style.background = 'var(--bg-surface)';
+                } else {
+                    modalWrapper.style.background = `linear-gradient(${nextColor}, ${nextColor}), var(--bg-surface)`;
+                }
+            }
+    if(typeof window.autoSaveNote === 'function') window.autoSaveNote();
+    toast('Color selected', 'info', 800);
+};
+
+window.triggerModalImageUpload = async function(event) {
+    try {
+        const file = event.target.files[0];
+        if(!file) return;
+        event.target.value = '';
+        showProgress(30); toast('Uploading asset...', 'info');
+        
+        const uniqueName = `note_img_${Date.now()}_${file.name}`;
+        const { error } = await supabaseClient.storage.from(BUCKET_NAME).upload(uniqueName, file);
+        if(error) { hideProgress(); return toast('Upload failed: ' + error.message, 'err'); }
+        
+        const { data: urlData } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(uniqueName);
+        const id = document.getElementById('nm-id').value;
+        const n = S.notes.find(x => x.id === id);
+        if(n) {
+            let imgs = n.images || (n.imageUrl ? [n.imageUrl] : []);
+            imgs.push(urlData.publicUrl);
+            n.images = imgs;
+            await window.saveNotesData();
+        }
+        
+        window.openNoteModal(id); 
+        window.loadFiles(); 
+        
+        hideProgress(); toast('Image added to note array.', 'ok');
+    } catch(err) {
+        hideProgress(); toast('Upload lifecycle exception', 'err');
+    }
+};
+
+window.copyModalNote = function() {
+    var title = document.getElementById('nm-title').value.trim();
+    var text = document.getElementById('nm-text').value.trim();
+    var content = title ? (title + '\n\n' + text) : text;
+    navigator.clipboard.writeText(content);
+    toast('Copied to clipboard!', 'ok');
+};
+
+window.dropNoteIntoFolder = function(noteId, folderId, event) {
+    if (event) {
+        event.preventDefault();
+        if (event.currentTarget) event.currentTarget.style.transform = 'scale(1)';
+    }
+    var n = S.notes.find(x => x.id === noteId);
+    if(n) { n.folderId = folderId; window.saveNotesData(); window.renderNotes(); toast('Note moved', 'ok'); }
+};
+
+window.moveNoteToRoot = function(noteId) {
+    if(!noteId || !noteId.startsWith('n_')) return;
+    var n = S.notes.find(x => x.id === noteId);
+    if(n) { n.folderId = null; window.saveNotesData(); window.renderNotes(); toast('Note moved to root', 'ok'); }
+};
+
+window.renderNotes = function() {
+    const fContainer = document.getElementById('folders-container');
+    const nContainer = document.getElementById('notes-container');
+    const backDropzone = document.getElementById('note-back-dropzone');
+    
+    if (window.notesFoldersSortable) { window.notesFoldersSortable.destroy(); window.notesFoldersSortable = null; }
+    if (window.notesSortable) { window.notesSortable.destroy(); window.notesSortable = null; }
+    
+    fContainer.innerHTML = ''; nContainer.innerHTML = '';
+
+    if (!window.currentFolderView) {
+        backDropzone.style.display = 'none';
+        if (S.folders.length > 0) {
+                    S.folders.sort((a,b) => (a.order || 0) - (b.order || 0));
+                    S.folders.forEach(f => {
+                                            const fel = document.createElement('div');
+                                            fel.className = 'folder-card';
+                                            fel.setAttribute('data-id', f.id);
+                                                                    window.bindFolderEvents(fel, 'note', f.id, f.name, (e) => window.viewFolder(f.id, f.name, e));
+                                            fel.innerHTML = `
+                                                                                            <i class="fa-regular fa-folder" style="color:var(--text-main); font-size:16px;"></i>
+                                                                                            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${f.name}</div>
+                                                                                        `;
+                                            fContainer.appendChild(fel);
+
+                                            if (typeof Sortable !== 'undefined') {
+                                                new Sortable(fel, {
+                                                    group: { name: 'notes', put: true },
+                                                    onAdd: function(evt) {
+                                                        let noteId = evt.item.getAttribute('data-id');
+                                                        window.dropNoteIntoFolder(noteId, f.id, null);
+                                                    }
+                                                });
+                                            }
+                                        });
+                }
+        
+                const addBtn = document.createElement('button');
+                                addBtn.style.cssText = "background:transparent; border:none; box-shadow:none; color:var(--text-main); cursor:pointer; font-size:18px; transition:transform 0.2s; outline:none; display:flex; align-items:center; justify-content:center; padding:4px 8px; flex-shrink:0;";
+                                addBtn.onmouseover = (e) => e.currentTarget.style.transform='scale(1.1)';
+                                addBtn.onmouseout = (e) => e.currentTarget.style.transform='scale(1)';
+                                addBtn.onclick = window.createNewFolder;
+                                addBtn.title = "New Folder";
+                                addBtn.innerHTML = '<i class="fa-solid fa-plus"></i>';
+                                fContainer.appendChild(addBtn);
+
+                if (typeof Sortable !== 'undefined') {
+                    window.notesFoldersSortable = new Sortable(fContainer, {
+                        animation: 250, delay: 250, delayOnTouchOnly: true, touchStartThreshold: 5, filter: 'button',
+                        onStart: () => {
+                            window.isDraggingFolder = true;
+                            document.getElementById('folderContextMenu').classList.remove('open');
+                        },
+                        onEnd: function () {
+                            window.isDraggingFolder = false;
+                            let items = Array.from(fContainer.querySelectorAll('.folder-card'));
+                            items.forEach((item, index) => {
+                                let id = item.getAttribute('data-id');
+                                let folder = S.folders.find(x => x.id === id);
+                                if (folder) folder.order = index;
+                            });
+                            window.saveNotesData();
+                                                    }
+                                                });
+                                            }
+                                        } else {
+                                                        backDropzone.style.display = 'none';
+                                                        if (typeof Sortable !== 'undefined' && !backDropzone._sortableInitialized) {
+                                                            new Sortable(backDropzone, {
+                                                                group: { name: 'notes', put: true },
+                                                                onAdd: function (evt) {
+                                                                    var data = evt.item.getAttribute('data-id');
+                                                                    if (data && data.startsWith('n_')) window.moveNoteToRoot(data);
+                                                                }
+                                                            });
+                                                            backDropzone._sortableInitialized = true;
+                                                        }
+                                                    }
+
+                                let visibleNotes = S.notes.filter(n => window.currentFolderView ? n.folderId === window.currentFolderView : !n.folderId);
+                                    visibleNotes.sort((a, b) => {
+                                        if(a.pinned && !b.pinned) return -1;
+                                        if(!a.pinned && b.pinned) return 1;
+                                        return (b.order || 0) - (a.order || 0);
+                                    });
+
+    visibleNotes.forEach(n => {
+            const el = document.createElement('div');
+            let txtLen = n.text ? n.text.length : 0;
+            let spanClass = ' span-small';
+        
+            let imgs = n.images || (n.imageUrl ? [n.imageUrl] : []);
+        
+            if (imgs.length > 0 || txtLen > 300) spanClass = ' span-half';
+            else if (txtLen < 60 && (!n.title || n.title.length < 20)) spanClass = ' span-tiny';
+        
+            el.className = 'note-card' + spanClass;
+        
+            let upColor = window.getUpgradedColor(n.color);
+                                    if (upColor === 'var(--note-base)') {
+                                        el.style.background = 'var(--bg-surface)';
+                                    } else {
+                                        el.style.background = `linear-gradient(${upColor}, ${upColor}), var(--bg-surface)`;
+                                    }
+        
+        el.setAttribute('data-id', n.id);
+                el.onclick = () => window.openNoteModal(n.id);
+                el.oncontextmenu = (e) => { e.preventDefault(); return false; };
+
+        let html = '';
+        if (n.pinned) html += `<div style="position:absolute; top:12px; right:12px; color:var(--amber);"><i class="fa-solid fa-thumbtack"></i></div>`;
+        if (n.title) html += `<div class="note-card-title">${String(n.title).replace(/</g,'&lt;')}</div>`;
+        
+        if (imgs.length > 0) {
+            let galClass = imgs.length > 4 ? 'count-many' : 'count-' + imgs.length;
+            html += `<div class="note-gallery ${galClass}">`;
+            imgs.forEach((src, i) => {
+                if (i >= 4) return; 
+                let extraStyle = (imgs.length === 3 && i === 0) ? 'grid-column: span 2; max-height: 160px;' : 'max-height: ' + (imgs.length === 1 ? '200px' : '100px') + ';';
+                let isOverlay = (imgs.length > 4 && i === 3);
+                html += `<div class="note-gallery-item" style="${extraStyle}" onclick="window.previewImage(event, '${src}')">
+                                           <img src="${src}" loading="lazy" onload="clearTimeout(window._packMasonryDebounce); window._packMasonryDebounce = setTimeout(window.packMasonry, 60)">
+                                           ${isOverlay ? `<div style="position:absolute;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:24px;">+${imgs.length-3}</div>` : ''}
+                                         </div>`;
+            });
+            html += `</div>`;
+        }
+        
+        if (n.text) {
+                            let maxLen = spanClass ? 800 : 200;
+                            let safeText = String(n.text).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            let textPreview = safeText.length > maxLen ? safeText.substring(0, maxLen) + '...' : safeText;
+                            html += window.parseMarkdown(textPreview, n.id, true);
+                        }
+                el.innerHTML = html;
+                                nContainer.appendChild(el);
+                    });
+
+                    if (typeof Sortable !== 'undefined') {
+                                            window.notesSortable = new Sortable(nContainer, {
+                                                group: 'notes',
+                                                animation: 250, delay: 200, delayOnTouchOnly: true, touchStartThreshold: 5,
+                                                ghostClass: 'sortable-ghost', dragClass: 'sortable-drag',
+                                                                            setData: function (dataTransfer, dragEl) { dataTransfer.setData('text/plain', dragEl.getAttribute('data-id')); },
+                                                                            onStart: function () {
+                                                                                if (window.currentFolderView) {
+                                                                                    let dz = document.getElementById('note-back-dropzone');
+                                                                                    if (dz) dz.style.display = 'flex';
+                                                                                }
+                                                                            },
+                                                                            onEnd: function () {
+                                                                                let dz = document.getElementById('note-back-dropzone');
+                                                                                if (dz) dz.style.display = 'none';
+                                                                                let items = Array.from(nContainer.children);
+                                let total = items.length;
+                                items.forEach((item, index) => {
+                                    let id = item.getAttribute('data-id');
+                                    let note = S.notes.find(n => n.id === id);
+                                    if (note) note.order = total - index;
+                                });
+                                window.saveNotesData(); window.packMasonry();
+                            }
+                        });
+                    }
+                    setTimeout(() => window.packMasonry(), 50);
+                };
+
+window.packMasonry = function() {
+    const container = document.getElementById('notes-container');
+    if (!container) return;
+    const items = container.querySelectorAll('.note-card');
+    const rowHeight = 4;
+    const gap = parseFloat(window.getComputedStyle(container).gap) || 16;
+
+    for (let i = 0; i < items.length; i++) items[i].style.gridRowEnd = 'auto';
+    const heights = [];
+    for (let i = 0; i < items.length; i++) heights.push(items[i].getBoundingClientRect().height);
+    for (let i = 0; i < items.length; i++) {
+        const spans = Math.ceil((heights[i] + gap) / (rowHeight + gap));
+        items[i].style.gridRowEnd = `span ${spans}`;
+    }
+};
+
+window.currentStoragePath = '';
+window.fileCmTarget = { name: null, url: null };
+
+window.toggleSort = function() {
+    if (window.currentSort === 'date') window.currentSort = 'size';
+    else if (window.currentSort === 'size') window.currentSort = 'alpha';
+    else window.currentSort = 'date';
+    
+    const icon = document.getElementById('sort-icon');
+    if (icon) {
+        icon.className = window.currentSort === 'date' ? 'fa-solid fa-arrow-down-a-z' : 
+                         (window.currentSort === 'size' ? 'fa-solid fa-arrow-down-9-1' : 'fa-solid fa-arrow-down-z-a');
+    }
+    toast('Sorted by ' + window.currentSort, 'info', 1500);
+    window.loadFiles();
+};
+
+window.toggleFormatFilter = function() {
+    window.isFormatFilterMode = !window.isFormatFilterMode;
+    window.activeFormatType = null;
+    const icon = document.getElementById('filter-icon');
+    if (icon) icon.style.color = window.isFormatFilterMode ? 'var(--amber)' : 'var(--text-main)';
+    toast(window.isFormatFilterMode ? 'Global Format View Active' : 'Standard Folder View', 'info', 2000);
+    window.loadFiles();
+};
+
+window.enterFormatFolder = function(type) {
+    window.activeFormatType = type;
+    document.getElementById('btn-back-storage').style.display = 'flex';
+    document.getElementById('storage-path-display').textContent = 'Formats / ' + type;
+    window.loadFiles();
+};
+
+window.fetchAllRecursive = async function(path = '') {
+    let all = [];
+    const { data } = await supabaseClient.storage.from(BUCKET_NAME).list(path, { limit: 1000 });
+    if (!data) return [];
+    for (let f of data) {
+        if (!f.id && f.name !== '.emptyFolderPlaceholder') {
+            let subPath = path ? path + '/' + f.name : f.name;
+            let subs = await window.fetchAllRecursive(subPath);
+            all = all.concat(subs);
+        } else if (f.id && f.name !== '.emptyFolderPlaceholder' && !f.name.startsWith('note_img_')) {
+            f._fullPath = path ? path + '/' + f.name : f.name;
+            f._parentPath = path || 'Root';
+            all.push(f);
+        }
+    }
+    return all;
+};
+
+window.toggleFileSelection = function(fileName, event) {
+    if (event) event.stopPropagation();
+    if (window.selectedFiles.has(fileName)) window.selectedFiles.delete(fileName);
+    else window.selectedFiles.add(fileName);
+    window.updateMultiSelectUI();
+    
+    // Sync the visual checkbox if the user clicked the file text row instead of the box itself
+    if (event && event.currentTarget && event.currentTarget.tagName !== 'INPUT') {
+        let cb = event.currentTarget.parentElement.querySelector('.file-checkbox');
+        if (cb) cb.checked = window.selectedFiles.has(fileName);
+    }
+};
+
+window.clearMultiSelect = function() {
+    window.selectedFiles.clear();
+    window.updateMultiSelectUI();
+    document.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = false);
+};
+
+window.updateMultiSelectUI = function() {
+    const bar = document.getElementById('multiSelectBar');
+    const count = document.getElementById('ms-count');
+    count.textContent = window.selectedFiles.size;
+    if (window.selectedFiles.size > 0) bar.classList.add('active');
+    else bar.classList.remove('active');
+};
+
+window.openFileContextMenu = function(name, url, event) {
+    event.preventDefault(); event.stopPropagation();
+    window.fileCmTarget = { name, url };
+    document.getElementById('file-cm-title').innerText = name;
+    
+    const menu = document.getElementById('fileContextMenu');
+    let x = window.innerWidth / 2, y = window.innerHeight / 2;
+    if (event.touches && event.touches.length > 0) { x = event.touches[0].clientX; y = event.touches[0].clientY; } 
+    else if (event.clientX !== undefined) { x = event.clientX; y = event.clientY; }
+    
+    menu.style.top = y + 'px'; menu.style.left = x + 'px'; menu.style.transform = 'none'; menu.style.margin = '0'; menu.style.opacity = '0';
+    menu.classList.add('open');
+    
+    setTimeout(() => {
+        const rect = menu.getBoundingClientRect();
+        if (x + rect.width > window.innerWidth) x = window.innerWidth - rect.width - 16;
+        if (y + rect.height > window.innerHeight) y = window.innerHeight - rect.height - 16;
+        menu.style.left = x + 'px'; menu.style.top = y + 'px'; menu.style.opacity = '1';
+    }, 0);
+};
+
+window.fileCmDownload = function() { document.getElementById('fileContextMenu').classList.remove('open'); window.triggerDownload(window.fileCmTarget.url, window.fileCmTarget.name); };
+window.fileCmRename = function() { document.getElementById('fileContextMenu').classList.remove('open'); window.openRenameModal(window.fileCmTarget.name); };
+window.fileCmCopyLink = function() { document.getElementById('fileContextMenu').classList.remove('open'); window.copyLink(window.fileCmTarget.url); };
+window.fileCmDelete = function() { document.getElementById('fileContextMenu').classList.remove('open'); window.deleteFile(window.fileCmTarget.name); };
+window.fileCmMove = function() {
+    document.getElementById('fileContextMenu').classList.remove('open');
+    window.pendingMove = { type: 'file', name: window.fileCmTarget.name, path: window.currentStoragePath };
+    if (window.showMoveToast) window.showMoveToast(`Moving "${window.fileCmTarget.name}"`);
+    else toast('Navigate to destination, then tap Paste', 'info');
+};
+
+window.enterStorageFolder = function(folderName) {
+    window.currentStoragePath = window.currentStoragePath ? window.currentStoragePath + '/' + folderName : folderName;
+    document.getElementById('btn-back-storage').style.display = 'flex';
+    document.getElementById('storage-path-display').textContent = '/' + window.currentStoragePath;
+    window.loadFiles();
+};
+
+window.goBackStorage = function() {
+    if (window.isFormatFilterMode && window.activeFormatType) {
+        window.activeFormatType = null;
+        document.getElementById('btn-back-storage').style.display = 'none';
+        document.getElementById('storage-path-display').textContent = 'Global Formats';
+        window.loadFiles();
+        return;
+    }
+
+    let parts = window.currentStoragePath.split('/');
+    parts.pop();
+    window.currentStoragePath = parts.join('/');
+    if (!window.currentStoragePath) {
+        document.getElementById('btn-back-storage').style.display = 'none';
+        document.getElementById('storage-path-display').textContent = '';
+    } else {
+        document.getElementById('storage-path-display').textContent = '/' + window.currentStoragePath;
+    }
+    window.loadFiles();
+};
+
+window.createStorageFolder = async function() {
+    let folderName = prompt('Enter folder name:');
+    if (!folderName || !folderName.trim()) return;
+    folderName = folderName.trim();
+    let prefix = window.currentStoragePath ? window.currentStoragePath + '/' : '';
+    showProgress(20); toast('Creating folder...', 'info');
+    const blob = new Blob([''], { type: 'text/plain' });
+    const { error } = await supabaseClient.storage.from(BUCKET_NAME).upload(prefix + folderName + '/.emptyFolderPlaceholder', blob);
+    if (error) { hideProgress(); return toast('Failed to create folder', 'err'); }
+    toast('Folder created', 'ok');
+    window.loadFiles();
+    hideProgress();
+};
+
+window.deleteStorageFolder = async function(folderName) {
+    if (!confirm(`Delete folder "${folderName}" and ALL its contents?`)) return;
+    showProgress(40);
+    let prefix = window.currentStoragePath ? window.currentStoragePath + '/' : '';
+    let targetPath = prefix + folderName;
+    const { data, error } = await supabaseClient.storage.from(BUCKET_NAME).list(targetPath);
+    if (data && data.length > 0) {
+        let toRemove = data.map(f => targetPath + '/' + f.name);
+        await supabaseClient.storage.from(BUCKET_NAME).remove(toRemove);
+    }
+    await supabaseClient.storage.from(BUCKET_NAME).remove([targetPath + '/.emptyFolderPlaceholder']);
+    toast('Folder deleted', 'ok');
+    window.loadFiles();
+    hideProgress();
+};
+
+window.dropIntoStorageFolder = async function(fileName, folderName) {
+    let currentPrefix = window.currentStoragePath ? window.currentStoragePath + '/' : '';
+    showProgress(30); toast('Moving file...', 'info');
+    const { error } = await supabaseClient.storage.from(BUCKET_NAME).move(currentPrefix + fileName, currentPrefix + folderName + '/' + fileName);
+    if (error) { hideProgress(); return toast('Move failed', 'err'); }
+    toast('File moved', 'ok');
+    window.loadFiles();
+    hideProgress();
+};
+
+window.executeDropOutStorage = async function(fileName) {
+    if (!fileName || fileName.startsWith('n_') || fileName === 'drag_folder' || !window.currentStoragePath) return;
+    
+    let parts = window.currentStoragePath.split('/');
+    parts.pop();
+    let parentPath = parts.length > 0 ? parts.join('/') + '/' : '';
+    let currentPrefix = window.currentStoragePath + '/';
+    
+    showProgress(30); toast('Moving file...', 'info');
+    
+    try {
+        const { error } = await supabaseClient.storage.from(BUCKET_NAME).move(currentPrefix + fileName, parentPath + fileName);
+        if (error) throw error;
+        toast('File moved out', 'ok');
+        window.loadFiles();
+    } catch(e) {
+        toast('Move failed', 'err');
+    }
+    hideProgress();
+};
+
+window.dropOutStorage = async function(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.currentTarget) {
+        event.currentTarget.style.transform = 'scale(1)';
+        event.currentTarget.style.color = 'var(--text-main)';
+    }
+    var fileName = event.dataTransfer.getData('text/plain');
+    window.executeDropOutStorage(fileName);
+};
+
+window.getIconForExt = function(ext) {
+    if(['png','jpg','jpeg','gif','webp','svg'].includes(ext)) return 'fa-solid fa-image';
+    if(['pdf'].includes(ext)) return 'fa-solid fa-file-pdf';
+    if(['doc','docx'].includes(ext)) return 'fa-solid fa-file-word';
+    if(['ppt','pptx'].includes(ext)) return 'fa-solid fa-file-powerpoint';
+    if(['zip','rar','tar','gz'].includes(ext)) return 'fa-solid fa-file-zipper';
+    if(['txt','rtf','csv','log','md'].includes(ext)) return 'fa-solid fa-file-lines';
+    if(['mp3','wav','ogg','m4a'].includes(ext)) return 'fa-solid fa-file-audio';
+    if(['mp4','webm','mov'].includes(ext)) return 'fa-solid fa-file-video';
+    if(['exe','deb','apk','msi'].includes(ext)) return 'fa-solid fa-box-archive';
+    if(['html','css','js','ts','jsx','tsx','py','java','c','cpp','cs','php','json','xml','sql','sh','bat','go','rs','rb','swift'].includes(ext)) return 'fa-solid fa-code';
+    return 'fa-solid fa-file';
+};
+
+window.getColorForExt = function(ext) {
+    if(['pdf','mp4','webm','mov','exe','deb'].includes(ext)) return 'var(--red)';
+    if(['zip','rar','tar','gz','ppt','pptx'].includes(ext)) return 'var(--amber)';
+    if(['mp3','wav','ogg','m4a'].includes(ext)) return 'var(--green)';
+    if(['png','jpg','jpeg','gif','webp','svg'].includes(ext)) return 'var(--teal)';
+    return 'var(--blue)';
+};
+
+window.loadFiles = async function() {
+    const container = document.getElementById('filesGridContainer');
+    const fContainer = document.getElementById('storage-folders-container');
+    const emptyState = document.getElementById('emptyState');
+    const searchVal = document.getElementById('storage-search-input')?.value.toLowerCase() || '';
+    
+    const ws = document.getElementById('mainWorkspace');
+    let pScroll = window._preserveScroll;
+    window._preserveScroll = null;
+    if (pScroll !== undefined && pScroll !== null && ws) {
+        container.style.minHeight = ws.scrollHeight + 'px';
+    }
+    const cleanupScroll = () => {
+        if (pScroll !== undefined && pScroll !== null && ws) {
+            container.style.minHeight = '';
+            ws.scrollTop = pScroll;
+        }
+    };
+    
+    if (window.storageFoldersSortable) { window.storageFoldersSortable.destroy(); window.storageFoldersSortable = null; }
+        if (window.filesSortable) { window.filesSortable.destroy(); window.filesSortable = null; }
+    
+    container.innerHTML = '<div style="color:var(--text-muted); font-family:monospace; grid-column: 1/-1;">Synchronizing with cloud array...</div>';
+    if (fContainer) fContainer.innerHTML = '';
+    emptyState.style.display = 'none';
+
+    let allFiles = [];
+        let folders = [];
+    
+        if (searchVal || window.isFormatFilterMode) {
+            allFiles = await window.fetchAllRecursive('');
+            if (window.isFormatFilterMode) {
+                document.getElementById('storage-path-display').textContent = window.activeFormatType ? `Formats / ${window.activeFormatType}` : 'Global Formats';
+                document.getElementById('btn-back-storage').style.display = window.activeFormatType ? 'flex' : 'none';
+            }
+        } else {
+            let prefix = window.currentStoragePath ? window.currentStoragePath + '/' : '';
+            const { data, error } = await supabaseClient.storage.from(BUCKET_NAME).list(window.currentStoragePath || '', { limit: 1000 });
+            if (error) { container.innerHTML = `<div style="color:var(--red);">Storage Node Error: ${error.message}</div>`; cleanupScroll(); return toast('Sync failed', 'err'); }
+        
+            folders = data.filter(f => !f.id && f.name !== '.emptyFolderPlaceholder');
+            const rawFiles = data.filter(f => f.id && f.name !== '.emptyFolderPlaceholder' && !f.name.startsWith('note_img_'));
+            rawFiles.forEach(f => {
+                f._fullPath = prefix + f.name;
+                f._parentPath = window.currentStoragePath || 'Root';
+                allFiles.push(f);
+            });
+        }
+
+        if (searchVal) allFiles = allFiles.filter(f => f.name.toLowerCase().includes(searchVal));
+
+    let totalBytes = allFiles.reduce((acc, f) => acc + (f.metadata?.size || 0), 0);
+    document.getElementById('sb-storage').textContent = (totalBytes / (1024 * 1024)).toFixed(2) + ' MB utilized';
+    document.getElementById('sb-count').textContent = allFiles.length + ' files';
+
+    // Remove duplicates from allFiles based on full path so search doesn't show multiples
+        const uniqueFilesMap = new Map();
+        allFiles.forEach(f => uniqueFilesMap.set(f._fullPath, f));
+        allFiles = Array.from(uniqueFilesMap.values());
+
+        if (window.isFormatFilterMode && !window.activeFormatType) {
+            let catStats = {};
+            Object.keys(window.fileCategories).forEach(c => catStats[c] = { count: 0, size: 0 });
+
+            allFiles.forEach(f => {
+                let ext = (f.name.includes('.') ? f.name.split('.').pop() : 'unknown').toLowerCase();
+                let matched = false;
+                for (let cat in window.fileCategories) {
+                    if (window.fileCategories[cat].exts.includes(ext)) {
+                        catStats[cat].count++;
+                        catStats[cat].size += (f.metadata?.size || 0);
+                        matched = true;
+                        break;
+                    }
+                }
+                if (!matched) { catStats['Others'].count++; catStats['Others'].size += (f.metadata?.size || 0); }
+            });
+        
+            const catGrid = document.createElement('div');
+                        catGrid.style.cssText = "display:flex; flex-wrap:wrap; gap:12px; width:100%;";
+                        Object.keys(catStats).forEach(cat => {
+                                        if (catStats[cat].count === 0) return;
+                                        const card = document.createElement('div');
+                                        card.className = 'category-card';
+                                        card.onclick = () => window.enterFormatFolder(cat);
+                                        card.innerHTML = `
+                                            <div class="category-icon-wrapper" style="color:${window.fileCategories[cat].color};">
+                                                <i class="${window.fileCategories[cat].icon}"></i>
+                                            </div>
+                                            <div style="font-weight:600; font-size:13px; color:var(--text-main);">${cat}</div>
+                                            <div style="font-size:11px; color:var(--text-muted);">${formatBytes(catStats[cat].size)}<br>(${catStats[cat].count})</div>
+                                        `;
+                                        catGrid.appendChild(card);
+                                    });
+                                    container.innerHTML = '';
+                                    if (catGrid.children.length === 0) emptyState.style.display = 'flex';
+                                    else container.appendChild(catGrid);
+                                    cleanupScroll();
+                                    return;
+                    }
+
+                if (window.isFormatFilterMode && window.activeFormatType) {
+        allFiles = allFiles.filter(f => {
+            let ext = (f.name.includes('.') ? f.name.split('.').pop() : 'unknown').toLowerCase();
+            if (window.activeFormatType === 'Others') {
+                let isKnown = false;
+                for (let c in window.fileCategories) {
+                    if (c !== 'Others' && window.fileCategories[c].exts.includes(ext)) isKnown = true;
+                }
+                return !isKnown;
+            }
+            return window.fileCategories[window.activeFormatType].exts.includes(ext);
+        });
+    } else {
+            folders.forEach(folder => {
+                                                                const card = document.createElement('div');
+                                                                card.className = 'folder-card';
+                                                                card.setAttribute('data-id', folder.name);
+                                                                window.bindFolderEvents(card, 'storage', folder.name, folder.name, () => window.enterStorageFolder(folder.name));
+                                                    card.innerHTML = `<i class="fa-regular fa-folder" style="color:var(--text-main); font-size:16px;"></i><div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${folder.name}</div>`;
+                                                    if (fContainer) fContainer.appendChild(card); else container.appendChild(card);
+                                        
+                                                    if (typeof Sortable !== 'undefined') {
+                                                        new Sortable(card, {
+                                                            group: { name: 'storageFiles', put: true },
+                                                            onAdd: function(evt) {
+                                                                let fileName = evt.item.getAttribute('data-id');
+                                                                window.dropIntoStorageFolder(fileName, folder.name);
+                                                                evt.item.style.display = 'none';
+                                                            }
+                                                        });
+                                                    }
+                                                });
+        
+            if (fContainer && !searchVal) {
+                            const addBtn = document.createElement('button');
+                                            addBtn.style.cssText = "background:transparent; border:none; box-shadow:none; color:var(--text-main); cursor:pointer; font-size:18px; outline:none; display:flex; align-items:center; justify-content:center; padding:4px 8px; flex-shrink:0;";
+                                            addBtn.onclick = window.createStorageFolder;
+                                            addBtn.innerHTML = '<i class="fa-solid fa-plus"></i>';
+                                            fContainer.appendChild(addBtn);
+            
+                if (typeof Sortable !== 'undefined') {
+                    window.storageFoldersSortable = new Sortable(fContainer, {
+                        animation: 250, delay: 250, delayOnTouchOnly: true, touchStartThreshold: 5, filter: 'button',
+                        onStart: () => {
+                            window.isDraggingFolder = true;
+                            document.getElementById('folderContextMenu').classList.remove('open');
+                        },
+                        onEnd: () => { window.isDraggingFolder = false; }
+                    });
+                }
+            }
+                    }
+
+                if (folders.length === 0 && allFiles.length === 0) { container.innerHTML = ''; emptyState.style.display = 'flex'; cleanupScroll(); return; }
+                container.innerHTML = '';
+
+                allFiles.sort((a,b) => {
+        if (window.currentSort === 'size') return (b.metadata?.size || 0) - (a.metadata?.size || 0);
+        if (window.currentSort === 'alpha') return a.name.localeCompare(b.name);
+        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    }).forEach(file => {
+        const ext = file.name.split('.').pop().toLowerCase();
+        let icon = window.getIconForExt(ext);
+        const isImage = ['png','jpg','jpeg','gif','webp','svg'].includes(ext);
+        const { data: urlData } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(file._fullPath);
+        const fileUrl = urlData.publicUrl;
+        let cleanName = file.name.includes('_') ? file.name.substring(file.name.indexOf('_') + 1) : file.name;
+
+        let previewHtml = '';
+                if (isImage) {
+                    previewHtml = `<div style="width:42px; height:42px; border-radius:14px; overflow:hidden; flex-shrink:0; background:var(--bg-base);"><img src="${fileUrl}" style="width:100%; height:100%; object-fit:cover;" loading="lazy"></div>`;
+                } else {
+                    let docColor = window.getColorForExt(ext);
+                    previewHtml = `<div style="width:42px; height:42px; border-radius:14px; background:var(--bg-base); display:flex; align-items:center; justify-content:center; color:${docColor}; font-size:18px; flex-shrink:0;"><i class="${icon}"></i></div>`;
+                }
+
+                let timeStr = '';
+                if (file.created_at) {
+                    const dt = new Date(file.created_at);
+                    timeStr = dt.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' ' + dt.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'});
+                }
+
+                const card = document.createElement('div');
+                                                        card.className = 'file-card';
+                                                        card.setAttribute('data-id', file.name);
+        
+                                                // Block native context menu so it doesn't interrupt long-press sorting
+                                                                card.oncontextmenu = (e) => { e.preventDefault(); return false; };
+
+                                let isChecked = window.selectedFiles.has(file.name);
+                                                let locHtml = (window.isFormatFilterMode || searchVal) ? `<div style="font-size:9px; color:var(--amber); margin-top:2px;">📁 ${file._parentPath}</div>` : '';
+                                                let openAction = isImage ? `window.previewImage(event, '${fileUrl}')` : `window.previewUniversal(event, '${fileUrl}', '${ext}')`;
+
+                card.innerHTML = `
+                    <div style="display:flex; gap:12px; align-items:center; flex:1; overflow:hidden; cursor:pointer;" onclick="${openAction}">
+                        <input type="checkbox" class="file-checkbox" ${isChecked ? 'checked' : ''} onclick="window.toggleFileSelection('${file.name}', event)">
+                        ${previewHtml}
+                        <div style="overflow:hidden; display:flex; flex-direction:column;">
+                            <div style="font-weight:600; font-size:13px; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${cleanName}">${cleanName}</div>
+                            <div style="font-size:11px; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">
+                                <span>${formatBytes(file.metadata?.size || 0)}</span>
+                                <span style="opacity:0.4; margin:0 4px;">|</span>
+                                <span>${timeStr}</span>
+                            </div>
+                            ${locHtml}
+                                            </div>
+                                        </div>
+                                        <div style="display:flex; gap:4px; flex-shrink:0; align-items:center;">
+                                                                                    <button class="action-mini-btn" style="box-shadow:none; background:transparent; width:32px; height:32px; color:var(--blue);" onclick="event.stopPropagation(); window.triggerDownload('${fileUrl}', '${cleanName}')" title="Quick Download"><i class="fa-solid fa-download"></i></button>
+                                                                                    <button class="action-mini-btn" style="box-shadow:none; background:transparent; width:32px; height:32px;" onclick="window.openFileContextMenu('${file.name}', '${fileUrl}', event)" title="More Options"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+                                                                                </div>
+                                                                            `;
+                                                                            container.appendChild(card);
+                                                                                                                                });
+                                            
+                                                                                                                        const backDropzoneFiles = document.getElementById('storage-back-dropzone');
+                                                                                                                                                                                                                                                if (backDropzoneFiles) {
+                                                                                                                                                                                                                                                    backDropzoneFiles.style.display = 'none';
+                                                                                                                                                                                                                                                    if (typeof Sortable !== 'undefined' && !backDropzoneFiles._sortableInitialized) {
+                                                                                                                                                                                                                                                        new Sortable(backDropzoneFiles, {
+                                                                                                                                                                                                                                                            group: { name: 'storageFiles', put: true },
+                                                                                                                                                                                                                                                            onAdd: function (evt) {
+                                                                                                                                                                                                                                                                var fileName = evt.item.getAttribute('data-id');
+                                                                                                                                                                                                                                                                if (fileName) {
+                                                                                                                                                                                                                                                                    window.executeDropOutStorage(fileName);
+                                                                                                                                                                                                                                                                    evt.item.style.display = 'none';
+                                                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                                                        });
+                                                                                                                                                                                                                                                        backDropzoneFiles._sortableInitialized = true;
+                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                }
+
+                                                                                                                                                                                                                                                if (typeof Sortable !== 'undefined') {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    window.filesSortable = new Sortable(container, {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        group: 'storageFiles',
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        animation: 250, delay: 250, delayOnTouchOnly: true, touchStartThreshold: 5,
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        ghostClass: 'sortable-ghost', dragClass: 'sortable-drag',
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        setData: function (dataTransfer, dragEl) { dataTransfer.setData('text/plain', dragEl.getAttribute('data-id')); },
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        onStart: function () {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            if (window.currentStoragePath) {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                let dz = document.getElementById('storage-back-dropzone');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                if (dz) dz.style.display = 'flex';
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        },
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        onEnd: function () {
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            let dz = document.getElementById('storage-back-dropzone');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            if (dz) dz.style.display = 'none';
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    });
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }
+                                            
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                cleanupScroll();
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            };
+
+                                                                                                                                                                                                                                                window.uploadFilesRealtime = async function(files) {
+    let fileArray = Array.from(files);
+    if (!fileArray.length) return;
+    toast(`Injecting ${fileArray.length} payload(s)...`, 'info');
+    let prefix = window.currentStoragePath ? window.currentStoragePath + '/' : '';
+    let successCount = 0;
+
+    for (let file of fileArray) {
+        const uniqueName = prefix + `${Date.now()}_${file.name}`;
+        try {
+            await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', `${SUPABASE_URL}/storage/v1/object/${BUCKET_NAME}/${uniqueName}`, true);
+                xhr.setRequestHeader('apikey', SUPABASE_ANON_KEY);
+                xhr.setRequestHeader('Authorization', `Bearer ${SUPABASE_ANON_KEY}`);
+                
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        const pct = Math.round((e.loaded / e.total) * 100);
+                        $progress.style.width = pct + '%';
+                        $progress.classList.add('active');
+                    }
+                };
+                
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) { successCount++; resolve(); }
+                    else reject(xhr.responseText);
+                };
+                xhr.onerror = () => reject('Network Error');
+                xhr.send(file);
+            });
+        } catch (e) {
+            console.error("Upload Error", e);
+        }
+    }
+    
+    hideProgress();
+    if (successCount < fileArray.length) toast(`Uploaded ${successCount}/${fileArray.length} failed`, 'warn');
+    else toast('Uploads complete!', 'ok');
+    window.loadFiles();
+};
+
+window.uploadFile = function(event) {
+    window.uploadFilesRealtime(event.target.files);
+    event.target.value = '';
+};
+
+window.deleteFile = async function(fileName) {
+    if(!confirm('Purge this asset permanently?')) return;
+    showProgress(40); 
+    let prefix = window.currentStoragePath ? window.currentStoragePath + '/' : '';
+    const { error } = await supabaseClient.storage.from(BUCKET_NAME).remove([prefix + fileName]);
+    if(error) { hideProgress(); return toast('Purge failure', 'err'); }
+    window.selectedFiles.delete(fileName);
+    window.updateMultiSelectUI();
+    toast('Asset cleanly purged.', 'ok'); window.loadFiles(); hideProgress();
+};
+
+window.msDelete = async function() {
+    if (window.selectedFiles.size === 0) return;
+    if(!confirm(`Purge ${window.selectedFiles.size} assets permanently?`)) return;
+    showProgress(40); toast('Purging batch...', 'info');
+    let prefix = window.currentStoragePath ? window.currentStoragePath + '/' : '';
+    let pathsToRemove = Array.from(window.selectedFiles).map(name => prefix + name);
+    const { error } = await supabaseClient.storage.from(BUCKET_NAME).remove(pathsToRemove);
+    if(error) { hideProgress(); return toast('Batch purge failure', 'err'); }
+    window.clearMultiSelect();
+    toast('Batch purged cleanly.', 'ok'); window.loadFiles(); hideProgress();
+};
+
+window.msDownload = async function() {
+    if (window.selectedFiles.size === 0) return;
+    toast(`Downloading ${window.selectedFiles.size} files...`, 'info');
+    const prefix = window.currentStoragePath ? window.currentStoragePath + '/' : '';
+    for (let fileName of window.selectedFiles) {
+        const fullPath = prefix + fileName;
+        const { data: urlData } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(fullPath);
+        let cleanName = fileName.includes('_') ? fileName.substring(fileName.indexOf('_') + 1) : fileName;
+        window.triggerDownload(urlData.publicUrl, cleanName);
+        await new Promise(r => setTimeout(r, 400)); // Stagger to prevent browser from blocking multiple popups
+    }
+    window.clearMultiSelect();
+};
+
+window.msMove = function() {
+    if (window.selectedFiles.size === 0) return;
+    window.pendingMove = { type: 'batch', items: Array.from(window.selectedFiles), path: window.currentStoragePath };
+    if (window.showMoveToast) window.showMoveToast(`Moving ${window.selectedFiles.size} items`);
+    else toast('Navigate to destination, then tap Paste', 'info');
+};
+
+window.executeTapMove = async function(destFolderName) {
+    let pm = window.pendingMove;
+    if (!pm) return;
+    
+    let destPath = window.currentStoragePath || '';
+    if (destFolderName) {
+        destPath = destPath ? destPath + '/' + destFolderName : destFolderName;
+    }
+    
+    let sourcePrefix = pm.path ? pm.path + '/' : '';
+    let destPrefix = destPath ? destPath + '/' : '';
+    
+    window.cancelTapMove();
+    showProgress(50); toast('Moving items...', 'info');
+
+    try {
+        if (pm.type === 'file') {
+            await supabaseClient.storage.from(BUCKET_NAME).move(sourcePrefix + pm.name, destPrefix + pm.name);
+        } else if (pm.type === 'batch') {
+            for (let fileName of pm.items) {
+                await supabaseClient.storage.from(BUCKET_NAME).move(sourcePrefix + fileName, destPrefix + fileName);
+            }
+            window.clearMultiSelect();
+        } else { // Folder move logic
+            let oldPath = sourcePrefix + pm.name;
+            let newPath = destPrefix + pm.name;
+            if (oldPath === newPath || newPath.startsWith(oldPath + '/')) return toast('Cannot move folder into itself', 'warn');
+            const { data } = await supabaseClient.storage.from(BUCKET_NAME).list(oldPath);
+            if (data) {
+                for (let file of data) await supabaseClient.storage.from(BUCKET_NAME).move(oldPath + '/' + file.name, newPath + '/' + file.name);
+            }
+            await supabaseClient.storage.from(BUCKET_NAME).remove([oldPath + '/.emptyFolderPlaceholder']);
+            await supabaseClient.storage.from(BUCKET_NAME).upload(newPath + '/.emptyFolderPlaceholder', new Blob([''], { type: 'text/plain' }));
+        }
+        window.loadFiles();
+        toast('Moved successfully', 'ok');
+    } catch(e) {
+        toast('Move failed', 'err');
+    }
+    hideProgress();
+};
+
+window.msDownloadZip = async function() {
+    if (window.selectedFiles.size === 0) return;
+    if (typeof JSZip === 'undefined') return toast('Zip library not loaded', 'err');
+    toast(`Bundling ${window.selectedFiles.size} files into zip...`, 'info');
+    showProgress(50);
+    try {
+        const zip = new JSZip();
+        const prefix = window.currentStoragePath ? window.currentStoragePath + '/' : '';
+        let downloaded = 0;
+        for (let fileName of window.selectedFiles) {
+            const fullPath = prefix + fileName;
+            const { data: urlData } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(fullPath);
+            const response = await fetch(urlData.publicUrl);
+            if (response.ok) {
+                const blob = await response.blob();
+                let cleanName = fileName.includes('_') ? fileName.substring(fileName.indexOf('_') + 1) : fileName;
+                zip.file(cleanName, blob);
+                downloaded++;
+            }
+        }
+        if (downloaded === 0) throw new Error('No files fetched');
+        const content = await zip.generateAsync({ type: 'blob' });
+        const zipName = 'Sovereign_Batch_' + Date.now() + '.zip';
+        const blobUrl = URL.createObjectURL(content);
+        const a = document.createElement('a'); a.href = blobUrl; a.download = zipName; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+        window.clearMultiSelect();
+        toast('Batch zip downloaded!', 'ok');
+    } catch(e) {
+        console.error(e); toast('Batch zip failed', 'err');
+    }
+    hideProgress();
+};
+
+// Global Drag and Drop Hook
+const dropOverlay = document.getElementById('global-drop-overlay');
+let dragCounter = 0;
+window.addEventListener('dragenter', (e) => { 
+    if (e.dataTransfer && e.dataTransfer.types && !e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault(); dragCounter++; dropOverlay.style.display = 'flex'; 
+});
+window.addEventListener('dragleave', (e) => { 
+    if (e.dataTransfer && e.dataTransfer.types && !e.dataTransfer.types.includes('Files')) return;
+    dragCounter--; if (dragCounter <= 0) { dragCounter = 0; dropOverlay.style.display = 'none'; }
+});
+window.addEventListener('dragover', (e) => { 
+    if (e.dataTransfer && e.dataTransfer.types && !e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault(); 
+});
+window.addEventListener('drop', (e) => {
+    if (e.dataTransfer && e.dataTransfer.types && !e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault(); dragCounter = 0; dropOverlay.style.display = 'none';
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        window.uploadFilesRealtime(e.dataTransfer.files);
+    }
+});
+
+window.copyLink = function(url) { navigator.clipboard.writeText(url).then(() => { toast('Link copied!', 'info'); }); };
+window.triggerDownload = async function(url, name) {
+    toast('Downloading...', 'info');
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Network response was not ok');
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = blobUrl; a.download = name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    } catch(e) {
+        toast('Direct download failed, falling back...', 'warn');
+        const a = document.createElement('a'); a.href = url; a.download = name; a.target = '_blank'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    }
+};
+
+window.downloadCurrentViewAsZip = async function() {
+    if (typeof JSZip === 'undefined') return toast('Zip library not loaded', 'err');
+    toast('Bundling files into zip...', 'info');
+    showProgress(50);
+    try {
+        const zip = new JSZip();
+        const prefix = window.currentStoragePath ? window.currentStoragePath + '/' : '';
+        const { data, error } = await supabaseClient.storage.from(BUCKET_NAME).list(window.currentStoragePath || '', { limit: 1000 });
+        if (error || !data) throw error;
+        const files = data.filter(f => f.id && f.name !== '.emptyFolderPlaceholder' && !f.name.startsWith('note_img_'));
+        if (files.length === 0) { hideProgress(); return toast('No files to zip', 'warn'); }
+        let downloaded = 0;
+        for (let file of files) {
+            const fullPath = prefix + file.name;
+            const { data: urlData } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(fullPath);
+            const response = await fetch(urlData.publicUrl);
+            if (response.ok) {
+                const blob = await response.blob();
+                let cleanName = file.name.includes('_') ? file.name.substring(file.name.indexOf('_') + 1) : file.name;
+                zip.file(cleanName, blob);
+                downloaded++;
+            }
+        }
+        if (downloaded === 0) { hideProgress(); return toast('Failed to fetch files', 'err'); }
+        const content = await zip.generateAsync({ type: 'blob' });
+        const zipName = (window.currentStoragePath ? window.currentStoragePath.split('/').pop() : 'Root_Files') + '.zip';
+        const blobUrl = URL.createObjectURL(content);
+        const a = document.createElement('a'); a.href = blobUrl; a.download = zipName; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+        toast('Zip download complete!', 'ok');
+    } catch(e) {
+        console.error(e); toast('Zip bundle failed', 'err');
+    }
+    hideProgress();
+};
+
+window.fcmDownloadZip = async function() {
+    document.getElementById('folderContextMenu').classList.remove('open');
+    let t = window.fcmTarget;
+    if (t.type !== 'storage') return toast('Only storage folders can be zipped', 'warn');
+    if (typeof JSZip === 'undefined') return toast('Zip library not loaded', 'err');
+    toast(`Bundling ${t.name} into zip...`, 'info');
+    showProgress(50);
+    try {
+        const zip = new JSZip();
+        const prefix = window.currentStoragePath ? window.currentStoragePath + '/' : '';
+        const targetPath = prefix + t.name;
+        const { data, error } = await supabaseClient.storage.from(BUCKET_NAME).list(targetPath, { limit: 1000 });
+        if (error || !data) throw error;
+        const files = data.filter(f => f.id && f.name !== '.emptyFolderPlaceholder');
+        if (files.length === 0) { hideProgress(); return toast('Folder is empty', 'warn'); }
+        let downloaded = 0;
+        for (let file of files) {
+            const fullPath = targetPath + '/' + file.name;
+            const { data: urlData } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(fullPath);
+            const response = await fetch(urlData.publicUrl);
+            if (response.ok) {
+                const blob = await response.blob();
+                let cleanName = file.name.includes('_') ? file.name.substring(file.name.indexOf('_') + 1) : file.name;
+                zip.file(cleanName, blob);
+                downloaded++;
+            }
+        }
+        if (downloaded === 0) { hideProgress(); return toast('Failed to fetch files', 'err'); }
+        const content = await zip.generateAsync({ type: 'blob' });
+        const blobUrl = URL.createObjectURL(content);
+        const a = document.createElement('a'); a.href = blobUrl; a.download = t.name + '.zip'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+        toast('Zip download complete!', 'ok');
+    } catch (e) {
+        console.error(e); toast('Folder zip failed', 'err');
+    }
+    hideProgress();
+};
+
+window.openRenameModal = function(name) {
+    document.getElementById('oldNameHidden').value = name;
+    let base = name.includes('_') ? name.substring(name.indexOf('_') + 1) : name;
+    document.getElementById('renameValueInput').value = base;
+    document.getElementById('renameModal').classList.add('open');
+};
+
+window.executeRename = async function() {
+    const oldName = document.getElementById('oldNameHidden').value;
+    const input = document.getElementById('renameValueInput').value.trim();
+    if(!input) return toast('Name cannot be empty', 'warn');
+    document.getElementById('renameModal').classList.remove('open'); showProgress(30);
+    const newName = oldName.includes('_') ? `${oldName.split('_')[0]}_${input}` : `${Date.now()}_${input}`;
+    toast('Rewriting path...', 'info');
+    let prefix = window.currentStoragePath ? window.currentStoragePath + '/' : '';
+    const { error } = await supabaseClient.storage.from(BUCKET_NAME).move(prefix + oldName, prefix + newName);
+    if(error) { hideProgress(); return toast('Rename failed', 'err'); }
+    toast('Asset name updated!', 'ok'); window.loadFiles(); hideProgress();
+};
+
+window.fcmTarget = { type: null, id: null, name: null };
+window.pendingMove = null;
+window.isDraggingFolder = false;
+
+window.showMoveToast = function(title) {
+    let mToast = document.getElementById('moveToast');
+    if (!mToast) {
+        mToast = document.createElement('div');
+        mToast.id = 'moveToast';
+        mToast.style.cssText = "position:fixed; bottom:110px; left:50%; transform:translateX(-50%); background:var(--blue); color:#fff; padding:8px 16px; border-radius:32px; z-index:50000; display:flex; gap:10px; align-items:center; font-size:12px; font-weight:600; box-shadow:0 8px 32px rgba(0,0,0,0.3); white-space:nowrap; max-width:90vw;";
+        document.body.appendChild(mToast);
+    }
+    mToast.innerHTML = `
+        <span style="overflow:hidden; text-overflow:ellipsis;">${title}</span>
+        <button class="btn" onclick="window.executeTapMove(null)" style="background:#fff; color:var(--blue); padding:4px 10px; font-size:11px; font-weight:700;"><i class="fa-solid fa-paste" style="margin-right:4px;"></i>Paste</button>
+        <button class="btn" onclick="window.cancelTapMove()" style="background:transparent; color:rgba(255,255,255,0.8); width:24px; height:24px; padding:0; box-shadow:none;"><i class="fa-solid fa-xmark"></i></button>
+    `;
+    mToast.style.display = 'flex';
+};
+
+window.openFolderMenu = function(type, id, name, event) {
+    if (window.isDraggingFolder) return;
+    if (event) { event.preventDefault(); event.stopPropagation(); }
+    window.fcmTarget = { type, id, name };
+    document.getElementById('fcm-title').innerText = name;
+    
+    const zipBtn = document.getElementById('fcm-download-btn');
+    if (zipBtn) zipBtn.style.display = type === 'storage' ? 'flex' : 'none';
+    
+    const menu = document.getElementById('folderContextMenu');
+    let x = window.innerWidth / 2;
+    let y = window.innerHeight / 2;
+    
+    if (event) {
+        if (event.touches && event.touches.length > 0) {
+            x = event.touches[0].clientX;
+            y = event.touches[0].clientY;
+        } else if (event.clientX !== undefined) {
+            x = event.clientX;
+            y = event.clientY;
+        }
+    }
+    
+    menu.style.top = y + 'px';
+    menu.style.left = x + 'px';
+    menu.style.transform = 'none';
+    menu.style.margin = '0';
+    menu.style.opacity = '0';
+    menu.classList.add('open');
+    
+    setTimeout(() => {
+        const rect = menu.getBoundingClientRect();
+        if (x + rect.width > window.innerWidth) x = window.innerWidth - rect.width - 16;
+        if (y + rect.height > window.innerHeight) y = window.innerHeight - rect.height - 16;
+        menu.style.left = x + 'px';
+        menu.style.top = y + 'px';
+        menu.style.opacity = '1';
+    }, 0);
+};
+
+window.bindFolderEvents = function(card, type, id, name, clickHandler) {
+    card.oncontextmenu = (e) => { e.preventDefault(); window.openFolderMenu(type, id, name, e); };
+    card.onclick = (e) => { clickHandler(e); };
+};
+
+window.fcmRename = async function() {
+    document.getElementById('folderContextMenu').classList.remove('open');
+    let t = window.fcmTarget;
+    let newName = prompt(`Rename folder "${t.name}" to:`, t.name);
+    if(!newName || newName === t.name) return;
+    
+    if (t.type === 'note') {
+        let f = S.folders.find(x => x.id === t.id);
+        if(f) { f.name = newName; await window.saveNotesData(); window.renderNotes(); toast('Folder renamed', 'ok'); }
+    } else if (t.type === 'storage') {
+        showProgress(50);
+        let prefix = window.currentStoragePath ? window.currentStoragePath + '/' : '';
+        let oldPath = prefix + t.name;
+        let newPath = prefix + newName;
+        const { data } = await supabaseClient.storage.from(BUCKET_NAME).list(oldPath);
+        if (data && data.length > 0) {
+            for (let file of data) {
+                 await supabaseClient.storage.from(BUCKET_NAME).move(oldPath + '/' + file.name, newPath + '/' + file.name);
+            }
+        }
+        await supabaseClient.storage.from(BUCKET_NAME).remove([oldPath + '/.emptyFolderPlaceholder']);
+        await supabaseClient.storage.from(BUCKET_NAME).upload(newPath + '/.emptyFolderPlaceholder', new Blob([''], { type: 'text/plain' }));
+        window.loadFiles();
+        hideProgress();
+        toast('Folder renamed', 'ok');
+    }
+};
+
+window.fcmDelete = function() {
+    document.getElementById('folderContextMenu').classList.remove('open');
+    let t = window.fcmTarget;
+    if (t.type === 'note') {
+        window.deleteFolder(t.id);
+    } else if (t.type === 'storage') {
+        window.deleteStorageFolder(t.name);
+    }
+};
+
+window.fcmMove = async function() {
+    document.getElementById('folderContextMenu').classList.remove('open');
+    let t = window.fcmTarget;
+    if (t.type === 'note') {
+        return toast('Note folders are root-level only right now.', 'warn');
+    } 
+    window.pendingMove = { type: t.type, name: t.name, path: window.currentStoragePath };
+    if (window.showMoveToast) window.showMoveToast(`Moving "${t.name}"`);
+};
+
+window.cancelTapMove = function() {
+    window.pendingMove = null;
+    let mToast = document.getElementById('moveToast');
+    if (mToast) mToast.style.display = 'none';
+};
+
+document.addEventListener('click', (e) => {
+    const fMenu = document.getElementById('folderContextMenu');
+    const fileMenu = document.getElementById('fileContextMenu');
+    const wpMenu = document.getElementById('wallpaperModal');
+    if (fMenu && fMenu.classList.contains('open') && !fMenu.contains(e.target)) fMenu.classList.remove('open');
+    if (fileMenu && fileMenu.classList.contains('open') && !fileMenu.contains(e.target)) fileMenu.classList.remove('open');
+    if (wpMenu && wpMenu.classList.contains('open') && !wpMenu.contains(e.target)) wpMenu.classList.remove('open');
+});
+document.addEventListener('touchstart', (e) => {
+    const fMenu = document.getElementById('folderContextMenu');
+    const fileMenu = document.getElementById('fileContextMenu');
+    const wpMenu = document.getElementById('wallpaperModal');
+    if (fMenu && fMenu.classList.contains('open') && !fMenu.contains(e.target)) fMenu.classList.remove('open');
+    if (fileMenu && fileMenu.classList.contains('open') && !fileMenu.contains(e.target)) fileMenu.classList.remove('open');
+    if (wpMenu && wpMenu.classList.contains('open') && !wpMenu.contains(e.target)) wpMenu.classList.remove('open');
+}, {passive: true});
+
+// Media Pan, Zoom & FS Engine
+window._mediaScale = 1;
+window._mediaPointX = 0;
+window._mediaPointY = 0;
+let _mediaPanning = false;
+let _mediaStartX = 0, _mediaStartY = 0;
+let _initialPinchDist = null;
+let _initialScale = 1;
+
+window.setImgTransform = function() {
+    const img = document.getElementById('imagePreviewSrc');
+    if(img) img.style.transform = `translate(${window._mediaPointX}px, ${window._mediaPointY}px) scale(${window._mediaScale})`;
+};
+
+window.mediaZoom = function(step) {
+    window._mediaScale += step;
+    if(window._mediaScale < 0.5) window._mediaScale = 0.5;
+    if(window._mediaScale > 8) window._mediaScale = 8;
+    window.setImgTransform();
+};
+
+window.mediaZoomReset = function() {
+    window._mediaScale = 1;
+    window._mediaPointX = 0;
+    window._mediaPointY = 0;
+    window.setImgTransform();
+};
+
+window.mediaToggleFS = function() {
+    let v = document.getElementById('videoPreviewSrc');
+    if (!v) return;
+    if (v.requestFullscreen) { v.requestFullscreen(); }
+    else if (v.webkitRequestFullscreen) { v.webkitRequestFullscreen(); }
+    else if (v.msRequestFullscreen) { v.msRequestFullscreen(); }
+};
+
+const _imgSrc = document.getElementById('imagePreviewSrc');
+if(_imgSrc) {
+    _imgSrc.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        _mediaStartX = e.clientX - window._mediaPointX;
+        _mediaStartY = e.clientY - window._mediaPointY;
+        _mediaPanning = true;
+        _imgSrc.style.cursor = 'grabbing';
+    });
+    _imgSrc.addEventListener('mouseup', function() { _mediaPanning = false; _imgSrc.style.cursor = 'grab'; });
+    _imgSrc.addEventListener('mouseleave', function() { _mediaPanning = false; _imgSrc.style.cursor = 'grab'; });
+    _imgSrc.addEventListener('mousemove', function(e) {
+        if (!_mediaPanning) return;
+        e.preventDefault();
+        window._mediaPointX = (e.clientX - _mediaStartX);
+        window._mediaPointY = (e.clientY - _mediaStartY);
+        window.setImgTransform();
+    });
+
+    _imgSrc.addEventListener('wheel', function(e) {
+        e.preventDefault();
+        const delta = Math.sign(e.deltaY) * -0.2;
+        window.mediaZoom(delta);
+    }, {passive: false});
+
+    _imgSrc.addEventListener('touchstart', function(e) {
+        if(e.touches.length === 1) {
+            _mediaStartX = e.touches[0].clientX - window._mediaPointX;
+            _mediaStartY = e.touches[0].clientY - window._mediaPointY;
+            _mediaPanning = true;
+        } else if (e.touches.length === 2) {
+            _mediaPanning = false;
+            _initialPinchDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            _initialScale = window._mediaScale;
+        }
+    }, {passive: false});
+
+    _imgSrc.addEventListener('touchmove', function(e) {
+        if(e.touches.length === 1 && _mediaPanning) {
+            e.preventDefault();
+            window._mediaPointX = (e.touches[0].clientX - _mediaStartX);
+            window._mediaPointY = (e.touches[0].clientY - _mediaStartY);
+            window.setImgTransform();
+        } else if (e.touches.length === 2 && _initialPinchDist) {
+            e.preventDefault();
+            let dist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            window._mediaScale = _initialScale * (dist / _initialPinchDist);
+            if(window._mediaScale < 0.5) window._mediaScale = 0.5;
+            if(window._mediaScale > 8) window._mediaScale = 8;
+            window.setImgTransform();
+        }
+    }, {passive: false});
+
+    _imgSrc.addEventListener('touchend', function(e) {
+        if(e.touches.length < 2) _initialPinchDist = null;
+        if(e.touches.length === 0) _mediaPanning = false;
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  window.loadFiles(); window.loadNotesData(); window.syncCloudTheme(); window.syncCloudWallpaper();
+  let roTimer;
+  const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(() => {
+          clearTimeout(roTimer); roTimer = setTimeout(() => window.packMasonry(), 40);
+      });
+  });
+  const gridNode = document.getElementById('notes-container');
+  if (gridNode) resizeObserver.observe(gridNode);
+
+  let scrollTimer;
+  const workspaceEl = document.getElementById('mainWorkspace');
+    const onScrollActivity = () => {
+        document.documentElement.classList.add('is-scrolling');
+        clearTimeout(scrollTimer);
+        scrollTimer = setTimeout(() => document.documentElement.classList.remove('is-scrolling'), 150);
+    };
+    if (workspaceEl) workspaceEl.addEventListener('scroll', onScrollActivity, {passive: true});
+  });
+
+  window.addEventListener('error', function(e) {
+      if (e.message && e.message.includes('ResizeObserver loop')) e.stopImmediatePropagation();
+  });
+</script>
+</body>
+</html>
