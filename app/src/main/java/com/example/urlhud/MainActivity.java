@@ -323,16 +323,21 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         if (next == current) return;
         zoomLevels.put(pane, next);
         
-        // 1. Calculate the scale percentage (matching your old Electron math)
-        float scalePercentage = 100f * (float) Math.pow(1.2, next);
+        // 1. Calculate the precise scale multiplier (e.g., 0.83 for zoom out)
+        float scaleMultiplier = (float) Math.pow(1.2, next);
         
-        // 2. Force CSS zoom via Javascript to bypass the broker's viewport restrictions
-        String js = "document.body.style.zoom = '" + scalePercentage + "%';";
+        // 2. Calculate the compensation size to prevent those massive empty gaps.
+        // If zoom is 80% (0.8), the page canvas needs to stretch to 125vw/125vh to reach the edges.
+        float compensatedSize = 100f / scaleMultiplier; 
+        
+        // 3. Inject the CSS zoom AND the dimensional fixes to the root HTML element
+        String js = "try { " +
+                    "  document.documentElement.style.zoom = '" + scaleMultiplier + "'; " +
+                    "  document.documentElement.style.width = '" + compensatedSize + "vw'; " +
+                    "  document.documentElement.style.height = '" + compensatedSize + "vh'; " +
+                    "} catch(e) { console.error('Zoom injection failed', e); }";
+        
         pane.evaluateJavascript(js, null);
-        
-        // 3. Keep the native Android zoom as a fallback for sites that do allow it
-        float factor = (float) Math.pow(1.2, next - current);
-        pane.zoomBy(factor);
     }
 
     public void handleToggleFullscreen() {
