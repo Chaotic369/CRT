@@ -330,11 +330,17 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
         // If zoom is 80% (0.8), the page canvas needs to stretch to 125vw/125vh to reach the edges.
         float compensatedSize = 100f / scaleMultiplier; 
         
-        // 3. Inject the CSS zoom AND the dimensional fixes to the root HTML element
+        // 3. Inject the CSS zoom AND the dimensional fixes to the root HTML element AND body,
+        //    so pages that hardcode body height/width to 100vh/100vw still fill the screen.
         String js = "try { " +
-                    "  document.documentElement.style.zoom = '" + scaleMultiplier + "'; " +
-                    "  document.documentElement.style.width = '" + compensatedSize + "vw'; " +
-                    "  document.documentElement.style.height = '" + compensatedSize + "vh'; " +
+                    "  var h = document.documentElement, b = document.body; " +
+                    "  h.style.zoom = '" + scaleMultiplier + "'; " +
+                    "  h.style.width = '" + compensatedSize + "vw'; " +
+                    "  h.style.height = '" + compensatedSize + "vh'; " +
+                    "  if (b) { " +
+                    "    b.style.width = '" + compensatedSize + "vw'; " +
+                    "    b.style.height = '" + compensatedSize + "vh'; " +
+                    "  } " +
                     "} catch(e) { console.error('Zoom injection failed', e); }";
         
         pane.evaluateJavascript(js, null);
