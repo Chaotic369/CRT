@@ -316,10 +316,21 @@ public class MainActivity extends AppCompatActivity implements DownloadsControll
 
     private void applyZoomStep(WebView pane, float step) {
         if (pane == null) return;
+        
         float current = zoomLevels.containsKey(pane) ? zoomLevels.get(pane) : 0f;
         float next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, current + step));
+        
         if (next == current) return;
         zoomLevels.put(pane, next);
+        
+        // 1. Calculate the scale percentage (matching your old Electron math)
+        float scalePercentage = 100f * (float) Math.pow(1.2, next);
+        
+        // 2. Force CSS zoom via Javascript to bypass the broker's viewport restrictions
+        String js = "document.body.style.zoom = '" + scalePercentage + "%';";
+        pane.evaluateJavascript(js, null);
+        
+        // 3. Keep the native Android zoom as a fallback for sites that do allow it
         float factor = (float) Math.pow(1.2, next - current);
         pane.zoomBy(factor);
     }
